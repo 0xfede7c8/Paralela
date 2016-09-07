@@ -21,10 +21,10 @@ int main( int argc, char *argv[] )
     		contador_circulo++;
     	}
 
-    float pi = 4.0*(float)contador_circulo/(float)NPUNTOS;
-    printf("%s: %f\n","Pi",pi);
-
     }
  
     MPI_Finalize();
+
+    float pi = 4.0*(float)contador_circulo/(float)NPUNTOS;
+    printf("%s: %f\n","Pi",pi);
 }
