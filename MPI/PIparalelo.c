@@ -15,7 +15,7 @@ int main( int argc, char *argv[] )
     int j;
     float x,y;
     for(j=0;j<NPUNTOS;j++){
-    	x = rand()/RAND_MAX;
+    	x = (float)rand()/(float)(RAND_MAX);
     	printf("%f\n",x);
 
     }
