@@ -19,6 +19,3 @@ int main( int argc, char *argv[] )
  
     MPI_Finalize();
 }
-
-Sample output:
-Query thread level= 3  Init_thread level= 3
