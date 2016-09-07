@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#define NPUNTOS 10000
+#define NPUNTOS 100000000
  
 int main( int argc, char *argv[] )
 {
