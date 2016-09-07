@@ -22,7 +22,7 @@ int main( int argc, char *argv[] )
     	}
 
     float pi = 4.0*contador_circulo/NPUNTOS;
-    printf("%s: %f","Pi",pi);
+    printf("%s: %f\n","Pi",pi);
 
     }
  
