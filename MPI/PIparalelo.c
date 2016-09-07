@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#define NPUNTOS 100000000
+#define NPUNTOS 100000
  
 int main( int argc, char *argv[] )
 {
@@ -17,7 +17,7 @@ int main( int argc, char *argv[] )
     for(j=0;j<NPUNTOS;j++){
     	x = (float)rand()/(float)(RAND_MAX);
     	y = (float)rand()/(float)(RAND_MAX);
-    	if(sqrt(x*x+y*y)<=1.0){
+    	if(sqrt(pow(x,2)+pow(x,2))<=1.0){
     		contador_circulo++;
     	}
 
