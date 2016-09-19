@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define VECLEN 100000000
+#define VECLEN 1000000000
 
 void imprimirVector(long int vec[]);
 
