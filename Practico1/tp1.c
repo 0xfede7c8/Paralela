@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <omp.h>
+#include <stdlib.h>
+
+#define VECLEN 1000000
 
 void prefixsum_inplace(float *x, int N) {
     float *suma;
@@ -32,10 +35,26 @@ void prefixsum_inplace(float *x, int N) {
     delete[] suma;
 }
 
-int main() {
-    const int n = 1000000;
+int main(int argc, char** argv) {
+
+    int largo;
+    double tini,tfin;
+    omp_set_num_threads(8);
+    if(argc>1){
+        printf("Argumento. \n");
+        largo = atoi(argv[1]);
+    }else{largo = VECLEN;}
+
+    const int n = largo;
     float x[n];
     for(int i=0; i<n; i++) x[i] = 1.0*i;
+
+    tini=omp_get_wtime();
     prefixsum_inplace(x, n);
-    for(int i=0; i<n; i++) printf("%f %f\n", x[i], 0.5*i*(i+1));
+    tfin=omp_get_wtime();
+
+   // for(int i=0; i<n; i++) printf("%f %f\n", x[i], 0.5*i*(i+1));
+
+    printf("\ndemoro %f\n",tfin-tini);
+
 }
