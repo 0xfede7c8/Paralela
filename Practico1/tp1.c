@@ -39,7 +39,6 @@ int main(int argc, char** argv) {
 
     int largo;
     double tini,tfin;
-    omp_set_num_threads(8);
     if(argc>1){
         printf("Argumento. \n");
         largo = atoi(argv[1]);
