@@ -35,7 +35,6 @@ canny_edgeCUDA
 *.su
 
 #images
-*.pgm
 *.jpg
 *.jpeg
 *.png
