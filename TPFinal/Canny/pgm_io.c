@@ -41,16 +41,16 @@ int read_pgm_image(char *infilename, unsigned char **image, int *rows,
    * Verify that the image is in PGM format, read in the number of columns
    * and rows in the image and scan past all of the header information.
    ***************************************************************************/
-   fgets(buf, 70, fp);
+   char* res = fgets(buf, 70, fp);
    if(strncmp(buf,"P5",2) != 0){
       fprintf(stderr, "The file %s is not in PGM format in ", infilename);
       fprintf(stderr, "read_pgm_image().\n");
       if(fp != stdin) fclose(fp);
       return(0);
    }
-   do{ fgets(buf, 70, fp); }while(buf[0] == '#');  /* skip all comment lines */
+   do{ res = fgets(buf, 70, fp); }while(buf[0] == '#');  /* skip all comment lines */
    sscanf(buf, "%d %d", cols, rows);
-   do{ fgets(buf, 70, fp); }while(buf[0] == '#');  /* skip all comment lines */
+   do{ res = fgets(buf, 70, fp); }while(buf[0] == '#');  /* skip all comment lines */
 
    /***************************************************************************
    * Allocate memory to store the image then read the image from the file.
@@ -151,16 +151,16 @@ int read_ppm_image(char *infilename, unsigned char **image_red,
    * Verify that the image is in PPM format, read in the number of columns
    * and rows in the image and scan past all of the header information.
    ***************************************************************************/
-   fgets(buf, 70, fp);
+   char* res = fgets(buf, 70, fp);
    if(strncmp(buf,"P6",2) != 0){
       fprintf(stderr, "The file %s is not in PPM format in ", infilename);
       fprintf(stderr, "read_ppm_image().\n");
       if(fp != stdin) fclose(fp);
       return(0);
    }
-   do{ fgets(buf, 70, fp); }while(buf[0] == '#');  /* skip all comment lines */
+   do{ res = fgets(buf, 70, fp); }while(buf[0] == '#');  /* skip all comment lines */
    sscanf(buf, "%d %d", cols, rows);
-   do{ fgets(buf, 70, fp); }while(buf[0] == '#');  /* skip all comment lines */
+   do{ res = fgets(buf, 70, fp); }while(buf[0] == '#');  /* skip all comment lines */
 
    /***************************************************************************
    * Allocate memory to store the image then read the image from the file.

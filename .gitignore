@@ -1,4 +1,6 @@
 # Object files
+canny_edge
+canny_edgeCUDA
 *.o
 *.ko
 *.obj

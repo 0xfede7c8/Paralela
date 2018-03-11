@@ -6,8 +6,7 @@
 #define WIDTH 2048
 #define HEIGHT 2048
 
-#define TILE_WIDTH 16
-#define TILE_HEIGHT 16
+g
 
 using namespace std;
 

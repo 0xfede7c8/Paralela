@@ -1,181 +1,62 @@
-/*
-"Canny" edge detector code:
----------------------------
+#include "canny_edge.h"
+#include "hysteresis.h"
+#include "pgm_io.h"
 
-This text file contains the source code for a "Canny" edge detector. It
-was written by Mike Heath (heath@csee.usf.edu) using some pieces of a
-Canny edge detector originally written by someone at Michigan State
-University.
+#define TILE_WIDTH 16
+#define TILE_HEIGHT 16
 
-There are three 'C' source code files in this text file. They are named
-"canny_edge.c", "hysteresis.c" and "pgm_io.c". They were written and compiled
-under SunOS 4.1.3. Since then they have also been compiled under Solaris.
-To make an executable program: (1) Separate this file into three files with
-the previously specified names, and then (2) compile the code using
-
-  gcc -o canny_edge canny_edge.c hysteresis.c pgm_io.c -lm        
-  (Note: You can also use optimization such as -O3)
-
-The resulting program, canny_edge, will process images in the PGM format.
-Parameter selection is left up to the user. A broad range of parameters to
-use as a starting point are: sigma 0.60-2.40, tlow 0.20-0.50 and,
-thigh 0.60-0.90.
-
-If you are using a Unix system, PGM file format conversion tools can be found
-at ftp://wuarchive.wustl.edu/graphics/graphics/packages/pbmplus/.
-Otherwise, it would be easy for anyone to rewrite the image I/O procedures
-because they are listed in the separate file pgm_io.c.
-
-If you want to check your compiled code, you can download grey-scale and edge
-images from http://marathon.csee.usf.edu/edge/edge_detection.html. You can use
-the parameters given in the edge filenames and check whether the edges that
-are output from your program match the edge images posted at that address.
-
-Mike Heath
-(10/29/96)
-*/
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-
-#define VERBOSE 0
-#define BOOSTBLURFACTOR 90.0
-
-int read_pgm_image(char *infilename, unsigned char **image, int *rows,
-    int *cols);
-int write_pgm_image(char *outfilename, unsigned char *image, int rows,
-    int cols, char *comment, int maxval);
-
-void canny(unsigned char *image, int rows, int cols, float sigma,
-         float tlow, float thigh, unsigned char **edge, char *fname);
-void gaussian_smooth(unsigned char *image, int rows, int cols, float sigma,
-        short int **smoothedim);
-void make_gaussian_kernel(float sigma, float **kernel, int *windowsize);
-void derrivative_x_y(short int *smoothedim, int rows, int cols,
-        short int **delta_x, short int **delta_y);
-void magnitude_x_y(short int *delta_x, short int *delta_y, int rows, int cols,
-        short int **magnitude);
-void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
-        float tlow, float thigh, unsigned char *edge);
-void radian_direction(short int *delta_x, short int *delta_y, int rows,
-    int cols, float **dir_radians, int xdirtag, int ydirtag);
-double angle_radians(double x, double y);
-
-int main(int argc, char *argv[])
-{
-   char *infilename = NULL;  /* Name of the input image */
-   char *dirfilename = NULL; /* Name of the output gradient direction image */
-   char outfilename[128];    /* Name of the output "edge" image */
-   char composedfname[128];  /* Name of the output "direction" image */
-   unsigned char *image;     /* The input image */
-   unsigned char *edge;      /* The output edge image */
-   int rows, cols;           /* The dimensions of the image. */
-   float sigma,              /* Standard deviation of the gaussian kernel. */
-	 tlow,               /* Fraction of the high threshold in hysteresis. */
-	 thigh;              /* High hysteresis threshold control. The actual
-			        threshold is the (100 * thigh) percentage point
-			        in the histogram of the magnitude of the
-			        gradient image that passes non-maximal
-			        suppression. */
-
-   /****************************************************************************
-   * Get the command line arguments.
-   ****************************************************************************/
-   if(argc < 5){
-   fprintf(stderr,"\n<USAGE> %s image sigma tlow thigh [writedirim]\n",argv[0]);
-      fprintf(stderr,"\n      image:      An image to process. Must be in ");
-      fprintf(stderr,"PGM format.\n");
-      fprintf(stderr,"      sigma:      Standard deviation of the gaussian");
-      fprintf(stderr," blur kernel.\n");
-      fprintf(stderr,"      tlow:       Fraction (0.0-1.0) of the high ");
-      fprintf(stderr,"edge strength threshold.\n");
-      fprintf(stderr,"      thigh:      Fraction (0.0-1.0) of the distribution");
-      fprintf(stderr," of non-zero edge\n                  strengths for ");
-      fprintf(stderr,"hysteresis. The fraction is used to compute\n");
-      fprintf(stderr,"                  the high edge strength threshold.\n");
-      fprintf(stderr,"      writedirim: Optional argument to output ");
-      fprintf(stderr,"a floating point");
-      fprintf(stderr," direction image.\n\n");
-      exit(1);
-   }
-
-   infilename = argv[1];
-   sigma = atof(argv[2]);
-   tlow = atof(argv[3]);
-   thigh = atof(argv[4]);
-
-   if(argc == 6) dirfilename = infilename;
-   else dirfilename = NULL;
-
-   /****************************************************************************
-   * Read in the image. This read function allocates memory for the image.
-   ****************************************************************************/
-   if(VERBOSE) printf("Reading the image %s.\n", infilename);
-   if(read_pgm_image(infilename, &image, &rows, &cols) == 0){
-      fprintf(stderr, "Error reading the input image, %s.\n", infilename);
-      exit(1);
-   }
-
-   /****************************************************************************
-   * Perform the edge detection. All of the work takes place here.
-   ****************************************************************************/
-   if(VERBOSE) printf("Starting Canny edge detection.\n");
-   if(dirfilename != NULL){
-      sprintf(composedfname, "%s_s_%3.2f_l_%3.2f_h_%3.2f.fim", infilename,
-      sigma, tlow, thigh);
-      dirfilename = composedfname;
-   }
-   canny(image, rows, cols, sigma, tlow, thigh, &edge, dirfilename);
-
-   /****************************************************************************
-   * Write out the edge image to a file.
-   ****************************************************************************/
-   sprintf(outfilename, "%s_s_%3.2f_l_%3.2f_h_%3.2f.pgm", infilename,
-      sigma, tlow, thigh);
-   if(VERBOSE) printf("Writing the edge iname in the file %s.\n", outfilename);
-   if(write_pgm_image(outfilename, edge, rows, cols, "", 255) == 0){
-      fprintf(stderr, "Error writing the edge image, %s.\n", outfilename);
-      exit(1);
-   }
-   free(image);
-   return 0;
-}
-
-/*******************************************************************************
-* PROCEDURE: canny
-* PURPOSE: To perform canny edge detection.
-* NAME: Mike Heath
-* DATE: 2/15/96
-*******************************************************************************/
-void canny(unsigned char *image, int rows, int cols, float sigma,
+void canny(unsigned char *image, const int rows, const int cols, float sigma,
          float tlow, float thigh, unsigned char **edge, char *fname)
 {
    FILE *fpdir=NULL;          /* File to write the gradient image to.     */
    unsigned char *nms;        /* Points that are local maximal magnitude. */
-   short int *smoothedim,     /* The image after gaussian smoothing.      */
+   short int *smoothedimHost, /* The image after gaussian smoothing.      */
+             *smoothedimDevice, /* The device image after gaussian smoothing.      */
              *delta_x,        /* The first devivative image, x-direction. */
              *delta_y,        /* The first derivative image, y-direction. */
              *magnitude;      /* The magnitude of the gadient image.      */
-   int r, c, pos;
    float *dir_radians=NULL;   /* Gradient direction image.                */
+
+   unsigned char* image_device, edge_device;
+
+   size_t smoothedimSz = (rows*cols)*sizeof(short int);
+
+   smoothedimHost = (short int *) malloc(smoothedimSz);
+
+   /****************************************************************************
+   * Allocs memory for cuda image operations and copies the read info into it.
+   ****************************************************************************/
+   const size_t imagesz = rows * cols;
+   //image to device
+   gpuErrchk(cudaMalloc((void**) &image_device, imagesz));
+   gpuErrchk(cudaMemcpy(image_device, image, imagesz, cudaMemcpyHostToDevice));
+   //allocate memory for result
+   gpuErrchk(cudaMalloc((void**) &edge_device, imagesz));
+   gpuErrchk(cudaMalloc((void**) &smoothedimDevice, smoothedimSz));
 
    /****************************************************************************
    * Perform gaussian smoothing on the image using the input standard
    * deviation.
    ****************************************************************************/
    if(VERBOSE) printf("Smoothing the image using a gaussian kernel.\n");
-   gaussian_smooth(image, rows, cols, sigma, &smoothedim);
+   gaussian_smooth(image_device, rows, cols, sigma, smoothedimDevice);
+
+
+   /*Testing host reallock to check workingshit*/
+
+   gpuErrchk(cudaMemcpy(smoothedimHost, smoothedimDevice, smoothedimSz, cudaMemcpyDeviceToHost));
+
 
    /****************************************************************************
    * Compute the first derivative in the x and y directions.
    ****************************************************************************/
    if(VERBOSE) printf("Computing the X and Y first derivatives.\n");
-   derrivative_x_y(smoothedim, rows, cols, &delta_x, &delta_y);
+   derrivative_x_y(smoothedimHost, rows, cols, &delta_x, &delta_y);
 
    /****************************************************************************
    * This option to write out the direction of the edge gradient was added
    * to make the information available for computing an edge quality figure
-   * of merit.
+   * of merit. (NOT IMPLEMENTED IN CUDA)
    ****************************************************************************/
    if(fname != NULL){
       /*************************************************************************
@@ -228,7 +109,9 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
    * Free all of the memory that we allocated except for the edge image that
    * is still being used to store out result.
    ****************************************************************************/
-   free(smoothedim);
+   cudaFree(smoothedimDevice);
+   cudaFree(image_device);
+   free(smoothedimHost);
    free(delta_x);
    free(delta_y);
    free(magnitude);
@@ -403,75 +286,103 @@ void derrivative_x_y(short int *smoothedim, int rows, int cols,
 * DATE: 2/15/96
 *******************************************************************************/
 void gaussian_smooth(unsigned char *image, int rows, int cols, float sigma,
-        short int **smoothedim)
+        short int *smoothedim)
 {
-   int r, c, rr, cc,     /* Counter variables. */
-      windowsize,        /* Dimension of the gaussian kernel. */
-      center;            /* Half of the windowsize. */
+   
+   int windowsize;          
    float *tempim,        /* Buffer for separable filter gaussian smoothing. */
          *kernel,        /* A one dimensional gaussian kernel. */
-         dot,            /* Dot product summing variable. */
-         sum;            /* Sum of the kernel weights variable. */
+         *kernelDevice;       
 
    /****************************************************************************
    * Create a 1-dimensional gaussian smoothing kernel.
    ****************************************************************************/
    if(VERBOSE) printf("   Computing the gaussian smoothing kernel.\n");
    make_gaussian_kernel(sigma, &kernel, &windowsize);
-   center = windowsize / 2;
+
+   size_t kernelSz =  windowsize * sizeof(float);
 
    /****************************************************************************
-   * Allocate a temporary buffer image and the smoothed image.
+   * Allocate a temporary buffer image
    ****************************************************************************/
-   if((tempim = (float *) calloc(rows*cols, sizeof(float))) == NULL){
-      fprintf(stderr, "Error allocating the buffer image.\n");
-      exit(1);
-   }
-   if(((*smoothedim) = (short int *) calloc(rows*cols,
-         sizeof(short int))) == NULL){
-      fprintf(stderr, "Error allocating the smoothed image.\n");
-      exit(1);
-   }
+   gpuErrchk(cudaMalloc((void**)&kernelDevice, kernelSz));
+   gpuErrchk(cudaMalloc((void**)&tempim, (rows*cols)*sizeof(float)));
+
+   /*Copy kernel to gpu*/
+   gpuErrchk(cudaMemcpy(kernelDevice, kernel, kernelSz, cudaMemcpyHostToDevice));
+
+   dim3 dimGrid(cols/TILE_WIDTH , rows/TILE_HEIGHT, 1);
+   dim3 dimBlock(TILE_WIDTH, TILE_HEIGHT);
+
+   if(VERBOSE) printf("   Bluring the image.\n");
+   cuda_gaussian_smoothX<<<dimGrid, dimBlock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, windowsize);
+   cuda_gaussian_smoothY<<<dimGrid, dimBlock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, windowsize);
+   
+   cudaFree(kernelDevice);
+   cudaFree(tempim);
+   free(kernel);
+}
+
+__global__
+void cuda_gaussian_smoothX( const unsigned char* image, 
+                            float*               tempim, 
+                            const int            rows, 
+                            const int            cols, 
+                            const float*         kernel, 
+                            short int*           smoothedim, 
+                            const int            windowsize)
+{
+
+   const int r = blockIdx.y * blockDim.y + threadIdx.y;
+   const int c = blockIdx.x * blockDim.x + threadIdx.x;
+   
+   const int center = windowsize / 2;
 
    /****************************************************************************
    * Blur in the x - direction.
    ****************************************************************************/
-   if(VERBOSE) printf("   Bluring the image in the X-direction.\n");
-   for(r=0;r<rows;r++){
-      for(c=0;c<cols;c++){
-         dot = 0.0;
-         sum = 0.0;
-         for(cc=(-center);cc<=center;cc++){
-            if(((c+cc) >= 0) && ((c+cc) < cols)){
-               dot += (float)image[r*cols+(c+cc)] * kernel[center+cc];
-               sum += kernel[center+cc];
-            }
-         }
-         tempim[r*cols+c] = dot/sum;
+   float dot = 0.0;
+   float sum = 0.0;
+   int cc; 
+   for(cc=(-center);cc<=center;cc++){
+      if(((c+cc) >= 0) && ((c+cc) < cols)){
+         dot += (float)image[r*cols+(c+cc)] * kernel[center+cc];
+         sum += kernel[center+cc];
       }
-   }
+   }   
+   tempim[r*cols+c] = dot/sum;
+}
 
+__global__
+void cuda_gaussian_smoothY( const unsigned char* image, 
+                            float*               tempim, 
+                            const int            rows, 
+                            const int            cols, 
+                            const float*         kernel, 
+                            short int*           smoothedim, 
+                            const int            windowsize)
+{
+
+   const int r = blockIdx.y * blockDim.y + threadIdx.y;
+   const int c = blockIdx.x * blockDim.x + threadIdx.x;         
+   
+   const int center = windowsize / 2;
+ 
    /****************************************************************************
    * Blur in the y - direction.
    ****************************************************************************/
-   if(VERBOSE) printf("   Bluring the image in the Y-direction.\n");
-   for(c=0;c<cols;c++){
-      for(r=0;r<rows;r++){
-         sum = 0.0;
-         dot = 0.0;
-         for(rr=(-center);rr<=center;rr++){
-            if(((r+rr) >= 0) && ((r+rr) < rows)){
-               dot += tempim[(r+rr)*cols+c] * kernel[center+rr];
-               sum += kernel[center+rr];
-            }
-         }
-         (*smoothedim)[r*cols+c] = (short int)(dot*BOOSTBLURFACTOR/sum + 0.5);
+   float dot = 0.0;
+   float sum = 0.0;
+   int rr;  
+   for(rr=(-center);rr<=center;rr++){
+      if(((r+rr) >= 0) && ((r+rr) < rows)){
+         dot += tempim[(r+rr)*cols+c] * kernel[center+rr];
+         sum += kernel[center+rr];
       }
    }
-
-   free(tempim);
-   free(kernel);
+   smoothedim[r*cols+c] = (short int)(dot*BOOSTBLURFACTOR/sum + 0.5);
 }
+
 
 /*******************************************************************************
 * PROCEDURE: make_gaussian_kernel
@@ -508,4 +419,3 @@ void make_gaussian_kernel(float sigma, float **kernel, int *windowsize)
          printf("kernel[%d] = %f\n", i, (*kernel)[i]);
    }
 }
-//<------------------------- end canny_edge.c ------------------------->

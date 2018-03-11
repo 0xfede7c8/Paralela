@@ -7,9 +7,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "hysteresis.h"
 
 #define VERBOSE 0
-
 #define NOEDGE 255
 #define POSSIBLE_EDGE 128
 #define EDGE 0
@@ -28,7 +28,6 @@ void follow_edges(unsigned char *edgemapptr, short *edgemagptr, short lowval,
    short *tempmagptr;
    unsigned char *tempmapptr;
    int i;
-   float thethresh;
    int x[8] = {1,1,0,-1,-1,-1,0,1},
        y[8] = {0,1,1,1,0,-1,-1,-1};
 
@@ -54,9 +53,8 @@ void follow_edges(unsigned char *edgemapptr, short *edgemagptr, short lowval,
 void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
 	float tlow, float thigh, unsigned char *edge)
 {
-   int r, c, pos, numedges, lowcount, highcount, lowthreshold, highthreshold,
-       i, hist[32768], rr, cc;
-   short int maximum_mag, sumpix;
+   int r, c, pos, numedges, highcount, lowthreshold, highthreshold, hist[32768];
+   short int maximum_mag;
 
    /****************************************************************************
    * Initialize the edge map to possible edges everywhere the non-maximal

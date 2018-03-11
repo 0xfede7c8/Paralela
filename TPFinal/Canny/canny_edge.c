@@ -13,7 +13,7 @@ under SunOS 4.1.3. Since then they have also been compiled under Solaris.
 To make an executable program: (1) Separate this file into three files with
 the previously specified names, and then (2) compile the code using
 
-  gcc -o canny_edge canny_edge.c hysteresis.c pgm_io.c -lm        
+  gcc -o canny_edge canny_edge.c hysteresis.c pgm_io.c -lm
   (Note: You can also use optimization such as -O3)
 
 The resulting program, canny_edge, will process images in the PGM format.
@@ -37,8 +37,11 @@ Mike Heath
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <sys/time.h>
 
-#define VERBOSE 0
+#include "hysteresis.h"
+
+#define VERBOSE 1
 #define BOOSTBLURFACTOR 90.0
 
 int read_pgm_image(char *infilename, unsigned char **image, int *rows,
@@ -61,6 +64,8 @@ void radian_direction(short int *delta_x, short int *delta_y, int rows,
     int cols, float **dir_radians, int xdirtag, int ydirtag);
 double angle_radians(double x, double y);
 
+void printTime(const struct timeval* start,const struct timeval* stop, const char* msg);
+
 int main(int argc, char *argv[])
 {
    char *infilename = NULL;  /* Name of the input image */
@@ -77,6 +82,8 @@ int main(int argc, char *argv[])
 			        in the histogram of the magnitude of the
 			        gradient image that passes non-maximal
 			        suppression. */
+
+   struct timeval stop, start;
 
    /****************************************************************************
    * Get the command line arguments.
@@ -125,7 +132,10 @@ int main(int argc, char *argv[])
       sigma, tlow, thigh);
       dirfilename = composedfname;
    }
+   gettimeofday(&start, NULL);
    canny(image, rows, cols, sigma, tlow, thigh, &edge, dirfilename);
+   gettimeofday(&stop, NULL);
+   printTime(&start, &stop, "Canny took: : ");
 
    /****************************************************************************
    * Write out the edge image to a file.
@@ -333,9 +343,7 @@ void magnitude_x_y(short int *delta_x, short int *delta_y, int rows, int cols,
          (*magnitude)[pos] = (short)(0.5 + sqrt((float)sq1 + (float)sq2));
       }
    }
-
 }
-
 /*******************************************************************************
 * PROCEDURE: derrivative_x_y
 * PURPOSE: Compute the first derivative of the image in both the x any y
@@ -507,5 +515,11 @@ void make_gaussian_kernel(float sigma, float **kernel, int *windowsize)
       for(i=0;i<(*windowsize);i++)
          printf("kernel[%d] = %f\n", i, (*kernel)[i]);
    }
+}
+
+void printTime(const struct timeval* start,const struct timeval* stop, const char* msg)
+{
+   printf("%s", msg);
+   printf("%li microseconds.\n", ((stop->tv_sec - start->tv_sec)*1000000L+stop->tv_usec) - start->tv_usec);
 }
 //<------------------------- end canny_edge.c ------------------------->
