@@ -9,16 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char *file, int line)
-{
-   int abort = 1;
-   if (code != cudaSuccess) 
-   {
-      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-      if (abort) exit(code);
-   }
-}
+#include "cuda_helper.h"
 
 void canny(unsigned char *image, int rows, int cols, float sigma,
          float tlow, float thigh, unsigned char **edge, char *fname);
@@ -39,22 +30,38 @@ void radian_direction(short int *delta_x, short int *delta_y, int rows,
 double angle_radians(double x, double y);
 
 __global__
-void cuda_gaussian_smoothX( const unsigned char* image, 
-                            float*               tempim, 
-                            const int            rows, 
-                            const int            cols, 
-                            const float*         kernel, 
-                            short int*           smoothedim, 
-                            const int            windowsize);
+void cuda_gaussian_smoothX( const unsigned char* image,
+                            float*               tempim,
+                            const int            rows,
+                            const int            cols,
+                            const float*         kernel,
+                            short int*           smoothedim,
+                            const int            windowsize,
+                            const int            center);
 
 __global__
-void cuda_gaussian_smoothY( const unsigned char* image, 
-                            float*               tempim, 
-                            const int            rows, 
-                            const int            cols, 
-                            const float*         kernel, 
-                            short int*           smoothedim, 
-                            const int            windowsize);
+void cuda_gaussian_smoothY( const unsigned char* image,
+                            float*               tempim,
+                            const int            rows,
+                            const int            cols,
+                            const float*         kernel,
+                            short int*           smoothedim,
+                            const int            windowsize,
+                            const int            center);
+
+__global__
+void cuda_derrivative_x_y(  short int* smoothedimDevice,
+                            int rows,
+                            int cols,
+                            short int* delta_xDevice,
+                            short int* delta_yDevice);
+
+__global__
+void cuda_magnitude_x_y(short int *delta_x,
+                        short int *delta_y,
+                        int rows, int cols,
+                        short int *magnitude);
+
 
 void printTime(const struct timeval* start,const struct timeval* stop, const char* msg);
 
