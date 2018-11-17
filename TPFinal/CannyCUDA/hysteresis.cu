@@ -11,11 +11,6 @@
 
 #include "hysteresis.h"
 
-#define VERBOSE 1
-#define NOEDGE 255
-#define POSSIBLE_EDGE 128
-#define EDGE 0
-
 /*******************************************************************************
 * PROCEDURE: follow_edges
 * PURPOSE: This procedure edges is a recursive routine that traces edgs along
@@ -53,7 +48,7 @@ void follow_edges(unsigned char *edgemapptr, short *edgemagptr, short lowval,
 * DATE: 2/15/96
 *******************************************************************************/
 void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
-	float tlow, float thigh, unsigned char *edge)
+    float tlow, float thigh, unsigned char *edge)
 {
    int r, c, pos, numedges, highcount, lowthreshold, highthreshold, hist[32768];
    short int maximum_mag;
@@ -67,8 +62,8 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
    ****************************************************************************/
    for(r=0,pos=0;r<rows;r++){
       for(c=0;c<cols;c++,pos++){
-	 if(nms[pos] == POSSIBLE_EDGE) edge[pos] = POSSIBLE_EDGE;
-	 else edge[pos] = NOEDGE;
+     if(nms[pos] == POSSIBLE_EDGE) edge[pos] = POSSIBLE_EDGE;
+     else edge[pos] = NOEDGE;
       }
    }
 
@@ -89,7 +84,7 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
    for(r=0;r<32768;r++) hist[r] = 0;
    for(r=0,pos=0;r<rows;r++){
       for(c=0;c<cols;c++,pos++){
-	 if(edge[pos] == POSSIBLE_EDGE) hist[mag[pos]]++;
+     if(edge[pos] == POSSIBLE_EDGE) hist[mag[pos]]++;
       }
    }
 
@@ -124,9 +119,9 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
 
    if(VERBOSE){
       printf("The input low and high fractions of %f and %f computed to\n",
-	 tlow, thigh);
+     tlow, thigh);
       printf("magnitude of the gradient threshold values of: %d %d\n",
-	 lowthreshold, highthreshold);
+     lowthreshold, highthreshold);
    }
 
    /****************************************************************************
@@ -135,10 +130,10 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
    ****************************************************************************/
    for(r=0,pos=0;r<rows;r++){
       for(c=0;c<cols;c++,pos++){
-	 if((edge[pos] == POSSIBLE_EDGE) && (mag[pos] >= highthreshold)){
+     if((edge[pos] == POSSIBLE_EDGE) && (mag[pos] >= highthreshold)){
             edge[pos] = EDGE;
             follow_edges((edge+pos), (mag+pos), lowthreshold, cols);
-	 }
+     }
       }
    }
 
@@ -165,36 +160,13 @@ void cuda_zero_edges( unsigned char* result,
                       int rows,
                       int cols)
 {
-    int count;
-    unsigned char* resultrowptr;
-    unsigned char* resultptr;
+    const int rowcount = blockIdx.y * blockDim.y + threadIdx.y;
+    const int colcount = blockIdx.x * blockDim.x + threadIdx.x;
 
-    for(count=0,
-        resultrowptr = result,
-        resultptr = result + cols*(rows-1);
-
-        count<cols;
-
-        resultptr++,
-        resultrowptr++,
-        count++)
-
-        {
-            *resultrowptr = *resultptr = (unsigned char) 0;
-        }
-
-    for(count=0,
-        resultptr = result,
-        resultrowptr= result + cols-1;
-
-        count<rows;
-
-        count++,
-        resultptr+=cols,
-        resultrowptr+=cols)
-        {
-            *resultptr = *resultrowptr = (unsigned char) 0;
-        }
+    if (rowcount == 0 || rowcount == - 1 || colcount == 0 || colcount == cols - 1 )
+    {
+        *(result + (rowcount*rows + colcount)) = (unsigned char) 0;
+    }
 }
 
 void non_max_supp(  short *mag,
@@ -246,7 +218,7 @@ void cuda_non_max_supp( short *mag,
     * Suppress non-maximum points.
     ****************************************************************************/
 
-    const short* magrowptr = mag + ncols + rowcount;
+    const short* magrowptr = mag + ncols + ncols*rowcount;
     const short* gxrowptr = gradx + ncols + ncols*rowcount;
     const short* gyrowptr = grady + ncols + ncols*rowcount;
     unsigned char* resultrowptr = result + ncols + ncols*rowcount;

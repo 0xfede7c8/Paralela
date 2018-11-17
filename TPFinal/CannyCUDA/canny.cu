@@ -290,14 +290,14 @@ void cuda_derrivative_x_y(  short int* smoothedimDevice,
                             short int* delta_yDevice)
 {
 
-    const int r = blockIdx.y * blockDim.y + threadIdx.y;
-    const int c = blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int r = blockIdx.y * blockDim.y + threadIdx.y;
+    const unsigned int c = blockIdx.x * blockDim.x + threadIdx.x;
 
-    int pos;
+    unsigned int pos;
 
     pos = r * cols + c;
 
-    if (c == 0)
+    if (c == 0u)
     {
         delta_xDevice[pos] = smoothedimDevice[pos+1] - smoothedimDevice[pos];
     }
@@ -368,8 +368,8 @@ void gaussian_smooth(unsigned char *image, int rows, int cols, float sigma,
    const int center = windowsize / 2;
 
    if(VERBOSE) printf("   Bluring the image.\n");
-   cuda_gaussian_smoothX<<<dimGrid, dimBlock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, windowsize, center);
-   cuda_gaussian_smoothY<<<dimGrid, dimBlock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, windowsize, center);
+   cuda_gaussian_smoothX<<<dimGrid, dimBlock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, center);
+   cuda_gaussian_smoothY<<<dimGrid, dimBlock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, center);
 
    cudaFree(kernelDevice);
    cudaFree(tempim);
@@ -383,7 +383,6 @@ void cuda_gaussian_smoothX( const unsigned char* image,
                             const int            cols,
                             const float*         kernel,
                             short int*           smoothedim,
-                            const int            windowsize,
                             const int            center)
 {
 
@@ -412,7 +411,6 @@ void cuda_gaussian_smoothY( const unsigned char* image,
                             const int            cols,
                             const float*         kernel,
                             short int*           smoothedim,
-                            const int            windowsize,
                             const int            center)
 {
 
@@ -426,7 +424,7 @@ void cuda_gaussian_smoothY( const unsigned char* image,
    float dot = 0.0;
    float sum = 0.0;
    int rr;
-   for(rr=(-center);rr<=center;rr++){
+   for(rr=(-center); rr<=center; rr++){
       if(((r+rr) >= 0) && ((r+rr) < rows)){
          dot += tempim[(r+rr)*cols+c] * kernel[center+rr];
          sum += kernel[center+rr];

@@ -1,6 +1,11 @@
 #ifndef HYSTERESIS_H
 #define HYSTERESIS_H
 
+#define VERBOSE 1
+#define NOEDGE 255
+#define POSSIBLE_EDGE 128
+#define EDGE 0
+
 void follow_edges(unsigned char *edgemapptr, short *edgemagptr, short lowval,int cols);
 
 void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,	float tlow, float thigh, unsigned char *edge);
