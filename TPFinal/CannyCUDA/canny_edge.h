@@ -35,7 +35,6 @@ void cuda_gaussian_smoothX( const unsigned char* image,
                             const int            rows,
                             const int            cols,
                             const float*         kernel,
-                            short int*           smoothedim,
                             const int            center);
 
 __global__

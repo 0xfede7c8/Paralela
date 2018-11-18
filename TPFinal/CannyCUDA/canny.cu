@@ -218,10 +218,13 @@ void magnitude_x_y( short int *delta_x,
 {
     gpuErrchk(cudaMalloc((void**) magnitude, rows*cols*sizeof(short)));
 
-    dim3 dimGrid(cols/TILE_WIDTH , rows/TILE_HEIGHT, 1);
-    dim3 dimBlock(TILE_WIDTH, TILE_HEIGHT);
+    dim3 dgrid;
+    dim3 dblock;
+   
+    get_dimgrid(&dgrid, cols, rows);
+    get_dimblock(&dblock);
 
-    cuda_magnitude_x_y<<<dimGrid, dimBlock>>>(delta_x, delta_y, rows, cols, *magnitude);
+    cuda_magnitude_x_y<<<dgrid, dblock>>>(delta_x, delta_y, rows, cols, *magnitude);
 
 }
 
@@ -235,12 +238,14 @@ void cuda_magnitude_x_y(short int *delta_x,
     const int r = blockIdx.y * blockDim.y + threadIdx.y;
     const int c = blockIdx.x * blockDim.x + threadIdx.x;
 
-    const int pos = r*cols + c;
+    if (r < rows && c < cols)
+    {
+        const int pos = r*cols + c;
+        const int sq1 = (int)delta_x[pos] * (int)delta_x[pos];
+        const int sq2 = (int)delta_y[pos] * (int)delta_y[pos];
 
-    const int sq1 = (int)delta_x[pos] * (int)delta_x[pos];
-    const int sq2 = (int)delta_y[pos] * (int)delta_y[pos];
-
-    magnitude[pos] = (short)(0.5 + sqrt((float)sq1 + (float)sq2));
+        magnitude[pos] = (short)(0.5 + sqrt((float)sq1 + (float)sq2));
+    }
 }
 
 /*******************************************************************************
@@ -273,11 +278,14 @@ void derrivative_x_y(   short int* smoothedimDevice,
    * losing pixels.
    ****************************************************************************/
 
-   dim3 dimGrid(cols/TILE_WIDTH , rows/TILE_HEIGHT, 1);
-   dim3 dimBlock(TILE_WIDTH, TILE_HEIGHT);
+   dim3 dgrid;
+   dim3 dblock;
+   
+   get_dimgrid(&dgrid, cols, rows);
+   get_dimblock(&dblock);
 
    if(VERBOSE) printf("   Computing the X-Y direction derivative.\n");
-   cuda_derrivative_x_y<<<dimGrid, dimBlock>>>(smoothedimDevice, rows, cols, *delta_xDevice, *delta_yDevice);
+   cuda_derrivative_x_y<<<dgrid, dblock>>>(smoothedimDevice, rows, cols, *delta_xDevice, *delta_yDevice);
 }
 
 
@@ -293,39 +301,42 @@ void cuda_derrivative_x_y(  short int* smoothedimDevice,
     const unsigned int r = blockIdx.y * blockDim.y + threadIdx.y;
     const unsigned int c = blockIdx.x * blockDim.x + threadIdx.x;
 
-    unsigned int pos;
+    if (r < rows && c < cols)
+    {
+        unsigned int pos;
 
-    pos = r * cols + c;
+        pos = r * cols + c;
 
-    if (c == 0u)
-    {
-        delta_xDevice[pos] = smoothedimDevice[pos+1] - smoothedimDevice[pos];
-    }
-    else if (c == (cols - 1))
-    {
-        delta_xDevice[pos] = smoothedimDevice[pos] - smoothedimDevice[pos-1];
-    }
-    else
-    {
-        delta_xDevice[pos] = smoothedimDevice[pos+1] - smoothedimDevice[pos-1];
-    }
+        if (c == 0u)
+        {
+            delta_xDevice[pos] = smoothedimDevice[pos+1] - smoothedimDevice[pos];
+        }
+        else if (c == (cols - 1))
+        {
+            delta_xDevice[pos] = smoothedimDevice[pos] - smoothedimDevice[pos-1];
+        }
+        else
+        {
+            delta_xDevice[pos] = smoothedimDevice[pos+1] - smoothedimDevice[pos-1];
+        }
 
-    /****************************************************************************
-    * Compute the y-derivative. Adjust the derivative at the borders to avoid
-    * losing pixels.
-    ****************************************************************************/
+        /****************************************************************************
+        * Compute the y-derivative. Adjust the derivative at the borders to avoid
+        * losing pixels.
+        ****************************************************************************/
 
-    if (r == 0)
-    {
-        delta_yDevice[pos] = smoothedimDevice[pos+cols] - smoothedimDevice[pos];
-    }
-    else if (r == (rows - 1))
-    {
-        delta_yDevice[pos] = smoothedimDevice[pos] - smoothedimDevice[pos-cols];
-    }
-    else
-    {
-        delta_yDevice[pos] = smoothedimDevice[pos+cols] - smoothedimDevice[pos-cols];
+        if (r == 0)
+        {
+            delta_yDevice[pos] = smoothedimDevice[pos+cols] - smoothedimDevice[pos];
+        }
+        else if (r == (rows - 1))
+        {
+            delta_yDevice[pos] = smoothedimDevice[pos] - smoothedimDevice[pos-cols];
+        }
+        else
+        {
+            delta_yDevice[pos] = smoothedimDevice[pos+cols] - smoothedimDevice[pos-cols];
+        }
     }
 }
 
@@ -351,25 +362,31 @@ void gaussian_smooth(unsigned char *image, int rows, int cols, float sigma,
    if(VERBOSE) printf("   Computing the gaussian smoothing kernel.\n");
    make_gaussian_kernel(sigma, &kernel, &windowsize);
 
-   size_t kernelSz =  windowsize * sizeof(float);
+   size_t kernelSz = windowsize * sizeof(float);
 
-   /****************************************************************************
+   /*
+   ***************************************************************************
    * Allocate a temporary buffer image
-   ****************************************************************************/
+   ***************************************************************************
+   */
    gpuErrchk(cudaMalloc((void**)&kernelDevice, kernelSz));
    gpuErrchk(cudaMalloc((void**)&tempim, (rows*cols)*sizeof(float)));
 
    /*Copy kernel to gpu*/
    gpuErrchk(cudaMemcpy(kernelDevice, kernel, kernelSz, cudaMemcpyHostToDevice));
 
-   dim3 dimGrid(cols/TILE_WIDTH , rows/TILE_HEIGHT, 1);
-   dim3 dimBlock(TILE_WIDTH, TILE_HEIGHT);
-
    const int center = windowsize / 2;
 
    if(VERBOSE) printf("   Bluring the image.\n");
-   cuda_gaussian_smoothX<<<dimGrid, dimBlock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, center);
-   cuda_gaussian_smoothY<<<dimGrid, dimBlock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, center);
+
+   dim3 dgrid;
+   dim3 dblock;
+   
+   get_dimgrid(&dgrid, cols, rows);
+   get_dimblock(&dblock);
+   
+   cuda_gaussian_smoothX<<<dgrid, dblock>>>(image, tempim, rows, cols, kernelDevice, center);
+   cuda_gaussian_smoothY<<<dgrid, dblock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, center);
 
    cudaFree(kernelDevice);
    cudaFree(tempim);
@@ -382,26 +399,25 @@ void cuda_gaussian_smoothX( const unsigned char* image,
                             const int            rows,
                             const int            cols,
                             const float*         kernel,
-                            short int*           smoothedim,
                             const int            center)
 {
-
    const int r = blockIdx.y * blockDim.y + threadIdx.y;
    const int c = blockIdx.x * blockDim.x + threadIdx.x;
-
-   /****************************************************************************
-   * Blur in the x - direction.
-   ****************************************************************************/
-   float dot = 0.0;
-   float sum = 0.0;
-   int cc;
-   for(cc=(-center);cc<=center;cc++){
-      if(((c+cc) >= 0) && ((c+cc) < cols)){
-         dot += (float)image[r*cols+(c+cc)] * kernel[center+cc];
-         sum += kernel[center+cc];
-      }
+   if (r < rows && c < cols)
+   {
+        int cc;
+        float dot = 0.0;
+        float sum = 0.0;
+        for(cc=(-center);cc<=center;cc++)
+        {
+            if(((c+cc) >= 0) && ((c+cc) < cols))
+            {
+                dot += (float)image[r*cols+(c+cc)] * kernel[center+cc];
+                sum += kernel[center+cc];
+            }
+        }
+        tempim[r*cols+c] = dot/sum;
    }
-   tempim[r*cols+c] = dot/sum;
 }
 
 __global__
@@ -413,24 +429,24 @@ void cuda_gaussian_smoothY( const unsigned char* image,
                             short int*           smoothedim,
                             const int            center)
 {
-
    const int r = blockIdx.y * blockDim.y + threadIdx.y;
    const int c = blockIdx.x * blockDim.x + threadIdx.x;
-
-
-   /****************************************************************************
-   * Blur in the y - direction.
-   ****************************************************************************/
-   float dot = 0.0;
-   float sum = 0.0;
-   int rr;
-   for(rr=(-center); rr<=center; rr++){
-      if(((r+rr) >= 0) && ((r+rr) < rows)){
-         dot += tempim[(r+rr)*cols+c] * kernel[center+rr];
-         sum += kernel[center+rr];
-      }
-   }
-   smoothedim[r*cols+c] = (short int)(dot*BOOSTBLURFACTOR/sum + 0.5);
+   
+   if (r < rows && c < cols)
+   {
+       float dot = 0.0;
+       float sum = 0.0;
+       int rr;
+       for(rr=(-center); rr<=center; rr++)
+       {
+            if(((r+rr) >= 0) && ((r+rr) < rows))
+            {
+                dot += tempim[(r+rr)*cols+c] * kernel[center+rr];
+                sum += kernel[center+rr];
+            }
+       }
+       smoothedim[r*cols+c] = (short int)(dot*BOOSTBLURFACTOR/sum + 0.5);
+    }
 }
 
 
