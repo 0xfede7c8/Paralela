@@ -41,7 +41,7 @@ Mike Heath
 
 #include "hysteresis.h"
 
-#define VERBOSE 1
+#define VERBOSE 0
 #define BOOSTBLURFACTOR 90.0
 
 int read_pgm_image(char *infilename, unsigned char **image, int *rows,
@@ -160,43 +160,66 @@ int main(int argc, char *argv[])
 void canny(unsigned char *image, int rows, int cols, float sigma,
          float tlow, float thigh, unsigned char **edge, char *fname)
 {
-   FILE *fpdir=NULL;          /* File to write the gradient image to.     */
-   unsigned char *nms;        /* Points that are local maximal magnitude. */
-   short int *smoothedim,     /* The image after gaussian smoothing.      */
+    FILE *fpdir=NULL;          /* File to write the gradient image to.     */
+    unsigned char *nms;        /* Points that are local maximal magnitude. */
+    short int *smoothedim,     /* The image after gaussian smoothing.      */
              *delta_x,        /* The first devivative image, x-direction. */
              *delta_y,        /* The first derivative image, y-direction. */
              *magnitude;      /* The magnitude of the gadient image.      */
-   int r, c, pos;
-   float *dir_radians=NULL;   /* Gradient direction image.                */
+    int r, c, pos;
+    float *dir_radians=NULL;   /* Gradient direction image.                */
 
-   /****************************************************************************
-   * Perform gaussian smoothing on the image using the input standard
-   * deviation.
-   ****************************************************************************/
-   if(VERBOSE) printf("Smoothing the image using a gaussian kernel.\n");
-   gaussian_smooth(image, rows, cols, sigma, &smoothedim);
+    struct timeval stop, start;
 
-   /****************************************************************************
-   * Compute the first derivative in the x and y directions.
-   ****************************************************************************/
-   if(VERBOSE) printf("Computing the X and Y first derivatives.\n");
-   derrivative_x_y(smoothedim, rows, cols, &delta_x, &delta_y);
+    /////////////////////////////////////////////////////////////////////////////
+    // Perform gaussian smoothing on the image using the input standard
+    // deviation.
+    /////////////////////////////////////////////////////////////////////////////
+    if(VERBOSE) printf("Smoothing the image using a gaussian kernel.\n");
+    gettimeofday(&start, NULL);
+    gaussian_smooth(image, rows, cols, sigma, &smoothedim);
+    gettimeofday(&stop, NULL);
+    printTime(&start, &stop, "gaussian smooth took: : ");
 
-   /****************************************************************************
-   * This option to write out the direction of the edge gradient was added
-   * to make the information available for computing an edge quality figure
-   * of merit.
-   ****************************************************************************/
-   if(fname != NULL){
-      /*************************************************************************
-      * Compute the direction up the gradient, in radians that are
-      * specified counteclockwise from the positive x-axis.
-      *************************************************************************/
+
+    if((*edge=(unsigned char *)calloc(rows*cols,sizeof(unsigned char))) ==NULL){
+      fprintf(stderr, "Error allocating the edge image.\n");
+      exit(1);
+    }
+    /*
+    for(int r=0; r<rows;r++){
+        for(int c=0; c<cols; c++){
+            *edge[r*cols+c] = (unsigned char) smoothedim[r*cols+c];
+        }
+    }
+    */
+    *edge = (unsigned char *) smoothedim;
+
+    //---------------------------------------------------------------------------
+    // Compute the first derivative in the x and y directions.
+    //---------------------------------------------------------------------------
+    /*
+    if(VERBOSE) printf("Computing the X and Y first derivatives.\n");
+    gettimeofday(&start, NULL);
+    derrivative_x_y(smoothedim, rows, cols, &delta_x, &delta_y);
+    gettimeofday(&stop, NULL);
+    printTime(&start, &stop, "derrivative_x_y took: : ");
+
+    //---------------------------------------------------------------------------
+    // This option to write out the direction of the edge gradient was added
+    // to make the information available for computing an edge quality figure
+    // of merit.
+    //---------------------------------------------------------------------------
+    if(fname != NULL){
+      //-------------------------------------------------------------------------
+      // Compute the direction up the gradient, in radians that are
+      // specified counteclockwise from the positive x-axis.
+      //-------------------------------------------------------------------------
       radian_direction(delta_x, delta_y, rows, cols, &dir_radians, -1, -1);
 
-      /*************************************************************************
-      * Write the gradient direction image out to a file.
-      *************************************************************************/
+      //-------------------------------------------------------------------------
+      // Write the gradient direction image out to a file.
+      //-------------------------------------------------------------------------
       if((fpdir = fopen(fname, "wb")) == NULL){
          fprintf(stderr, "Error opening the file %s for writing.\n", fname);
          exit(1);
@@ -204,45 +227,56 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
       fwrite(dir_radians, sizeof(float), rows*cols, fpdir);
       fclose(fpdir);
       free(dir_radians);
-   }
+    }
 
-   /****************************************************************************
-   * Compute the magnitude of the gradient.
-   ****************************************************************************/
-   if(VERBOSE) printf("Computing the magnitude of the gradient.\n");
-   magnitude_x_y(delta_x, delta_y, rows, cols, &magnitude);
+    //---------------------------------------------------------------------------
+    // Compute the magnitude of the gradient.
+    //---------------------------------------------------------------------------
+    if(VERBOSE) printf("Computing the magnitude of the gradient.\n");
+    gettimeofday(&start, NULL);
+    magnitude_x_y(delta_x, delta_y, rows, cols, &magnitude);
+    gettimeofday(&stop, NULL);
+    printTime(&start, &stop, "magnitude_x_y took: : ");
 
-   /****************************************************************************
-   * Perform non-maximal suppression.
-   ****************************************************************************/
-   if(VERBOSE) printf("Doing the non-maximal suppression.\n");
-   if((nms = (unsigned char *) calloc(rows*cols,sizeof(unsigned char)))==NULL){
+    //---------------------------------------------------------------------------
+    // Perform non-maximal suppression.
+    //---------------------------------------------------------------------------
+    if(VERBOSE) printf("Doing the non-maximal suppression.\n");
+    if((nms = (unsigned char *) calloc(rows*cols,sizeof(unsigned char)))==NULL){
       fprintf(stderr, "Error allocating the nms image.\n");
       exit(1);
-   }
+    }
 
-   non_max_supp(magnitude, delta_x, delta_y, rows, cols, nms);
+    gettimeofday(&start, NULL);
+    non_max_supp(magnitude, delta_x, delta_y, rows, cols, nms);
+    gettimeofday(&stop, NULL);
+    printTime(&start, &stop, "no_max_supp took: : ");
 
-   /****************************************************************************
-   * Use hysteresis to mark the edge pixels.
-   ****************************************************************************/
-   if(VERBOSE) printf("Doing hysteresis thresholding.\n");
-   if((*edge=(unsigned char *)calloc(rows*cols,sizeof(unsigned char))) ==NULL){
+    //---------------------------------------------------------------------------
+    // Use hysteresis to mark the edge pixels.
+    //---------------------------------------------------------------------------
+    if(VERBOSE) printf("Doing hysteresis thresholding.\n");
+    if((*edge=(unsigned char *)calloc(rows*cols,sizeof(unsigned char))) ==NULL){
       fprintf(stderr, "Error allocating the edge image.\n");
       exit(1);
-   }
+    }
 
-   apply_hysteresis(magnitude, nms, rows, cols, tlow, thigh, *edge);
+    gettimeofday(&start, NULL);
+    apply_hysteresis(magnitude, nms, rows, cols, tlow, thigh, *edge);
+    gettimeofday(&stop, NULL);
+    printTime(&start, &stop, "apply_hysteresis took: : ");
 
-   /****************************************************************************
-   * Free all of the memory that we allocated except for the edge image that
-   * is still being used to store out result.
-   ****************************************************************************/
-   free(smoothedim);
-   free(delta_x);
-   free(delta_y);
-   free(magnitude);
-   free(nms);
+    //---------------------------------------------------------------------------
+    // Free all of the memory that we allocated except for the edge image that
+    // is still being used to store out result.
+    //---------------------------------------------------------------------------
+    free(smoothedim);
+    free(delta_x);
+    free(delta_y);
+    free(magnitude);
+    free(nms);
+    */
+
 }
 
 /*******************************************************************************
@@ -359,26 +393,28 @@ void magnitude_x_y(short int *delta_x, short int *delta_y, int rows, int cols,
 void derrivative_x_y(short int *smoothedim, int rows, int cols,
         short int **delta_x, short int **delta_y)
 {
-   int r, c, pos;
+    int r, c, pos;
+    struct timeval stop, start;
 
-   /****************************************************************************
-   * Allocate images to store the derivatives.
-   ****************************************************************************/
-   if(((*delta_x) = (short *) calloc(rows*cols, sizeof(short))) == NULL){
+    /****************************************************************************
+    * Allocate images to store the derivatives.
+    ****************************************************************************/
+    if(((*delta_x) = (short *) calloc(rows*cols, sizeof(short))) == NULL){
       fprintf(stderr, "Error allocating the delta_x image.\n");
       exit(1);
-   }
-   if(((*delta_y) = (short *) calloc(rows*cols, sizeof(short))) == NULL){
+    }
+    if(((*delta_y) = (short *) calloc(rows*cols, sizeof(short))) == NULL){
       fprintf(stderr, "Error allocating the delta_x image.\n");
       exit(1);
-   }
+    }
 
-   /****************************************************************************
-   * Compute the x-derivative. Adjust the derivative at the borders to avoid
-   * losing pixels.
-   ****************************************************************************/
-   if(VERBOSE) printf("   Computing the X-direction derivative.\n");
-   for(r=0;r<rows;r++){
+    /****************************************************************************
+    * Compute the x-derivative. Adjust the derivative at the borders to avoid
+    * losing pixels.
+    ****************************************************************************/
+    if(VERBOSE) printf("   Computing the X-direction derivative.\n");
+    gettimeofday(&start, NULL);
+    for(r=0;r<rows;r++){
       pos = r * cols;
       (*delta_x)[pos] = smoothedim[pos+1] - smoothedim[pos];
       pos++;
@@ -386,14 +422,17 @@ void derrivative_x_y(short int *smoothedim, int rows, int cols,
          (*delta_x)[pos] = smoothedim[pos+1] - smoothedim[pos-1];
       }
       (*delta_x)[pos] = smoothedim[pos] - smoothedim[pos-1];
-   }
+    }
+    gettimeofday(&stop, NULL);
+    printTime(&start, &stop, "Derivative in X took: ");
 
-   /****************************************************************************
-   * Compute the y-derivative. Adjust the derivative at the borders to avoid
-   * losing pixels.
-   ****************************************************************************/
-   if(VERBOSE) printf("   Computing the Y-direction derivative.\n");
-   for(c=0;c<cols;c++){
+    /****************************************************************************
+    * Compute the y-derivative. Adjust the derivative at the borders to avoid
+    * losing pixels.
+    ****************************************************************************/
+    if(VERBOSE) printf("   Computing the Y-direction derivative.\n");
+    gettimeofday(&start, NULL);
+    for(c=0;c<cols;c++){
       pos = c;
       (*delta_y)[pos] = smoothedim[pos+cols] - smoothedim[pos];
       pos += cols;
@@ -401,7 +440,9 @@ void derrivative_x_y(short int *smoothedim, int rows, int cols,
          (*delta_y)[pos] = smoothedim[pos+cols] - smoothedim[pos-cols];
       }
       (*delta_y)[pos] = smoothedim[pos] - smoothedim[pos-cols];
-   }
+    }
+    gettimeofday(&stop, NULL);
+    printTime(&start, &stop, "Derivative in Y took: ");
 }
 
 /*******************************************************************************
@@ -413,39 +454,41 @@ void derrivative_x_y(short int *smoothedim, int rows, int cols,
 void gaussian_smooth(unsigned char *image, int rows, int cols, float sigma,
         short int **smoothedim)
 {
-   int r, c, rr, cc,     /* Counter variables. */
+    int r, c, rr, cc,     /* Counter variables. */
       windowsize,        /* Dimension of the gaussian kernel. */
       center;            /* Half of the windowsize. */
-   float *tempim,        /* Buffer for separable filter gaussian smoothing. */
+    float *tempim,        /* Buffer for separable filter gaussian smoothing. */
          *kernel,        /* A one dimensional gaussian kernel. */
          dot,            /* Dot product summing variable. */
          sum;            /* Sum of the kernel weights variable. */
+    struct timeval stop, start;
 
-   /****************************************************************************
-   * Create a 1-dimensional gaussian smoothing kernel.
-   ****************************************************************************/
-   if(VERBOSE) printf("   Computing the gaussian smoothing kernel.\n");
-   make_gaussian_kernel(sigma, &kernel, &windowsize);
-   center = windowsize / 2;
+    /****************************************************************************
+    * Create a 1-dimensional gaussian smoothing kernel.
+    ****************************************************************************/
+    if(VERBOSE) printf("   Computing the gaussian smoothing kernel.\n");
+    make_gaussian_kernel(sigma, &kernel, &windowsize);
+    center = windowsize / 2;
 
-   /****************************************************************************
-   * Allocate a temporary buffer image and the smoothed image.
-   ****************************************************************************/
-   if((tempim = (float *) calloc(rows*cols, sizeof(float))) == NULL){
+    /****************************************************************************
+    * Allocate a temporary buffer image and the smoothed image.
+    ****************************************************************************/
+    if((tempim = (float *) calloc(rows*cols, sizeof(float))) == NULL){
       fprintf(stderr, "Error allocating the buffer image.\n");
       exit(1);
-   }
-   if(((*smoothedim) = (short int *) calloc(rows*cols,
+    }
+    if(((*smoothedim) = (short int *) calloc(rows*cols,
          sizeof(short int))) == NULL){
       fprintf(stderr, "Error allocating the smoothed image.\n");
       exit(1);
-   }
+    }
 
-   /****************************************************************************
-   * Blur in the x - direction.
-   ****************************************************************************/
-   if(VERBOSE) printf("   Bluring the image in the X-direction.\n");
-   for(r=0;r<rows;r++){
+    /****************************************************************************
+    * Blur in the x - direction.
+    ****************************************************************************/
+    if(VERBOSE) printf("   Bluring the image in the X-direction.\n");
+    gettimeofday(&start, NULL);
+    for(r=0;r<rows;r++){
       for(c=0;c<cols;c++){
          dot = 0.0;
          sum = 0.0;
@@ -457,13 +500,16 @@ void gaussian_smooth(unsigned char *image, int rows, int cols, float sigma,
          }
          tempim[r*cols+c] = dot/sum;
       }
-   }
+    }
+    gettimeofday(&stop, NULL);
+    printTime(&start, &stop, "Smoothed in X took: ");
 
-   /****************************************************************************
-   * Blur in the y - direction.
-   ****************************************************************************/
-   if(VERBOSE) printf("   Bluring the image in the Y-direction.\n");
-   for(c=0;c<cols;c++){
+    /****************************************************************************
+    * Blur in the y - direction.
+    ****************************************************************************/
+    if(VERBOSE) printf("   Bluring the image in the Y-direction.\n");
+    gettimeofday(&start, NULL);
+    for(c=0;c<cols;c++){
       for(r=0;r<rows;r++){
          sum = 0.0;
          dot = 0.0;
@@ -475,10 +521,12 @@ void gaussian_smooth(unsigned char *image, int rows, int cols, float sigma,
          }
          (*smoothedim)[r*cols+c] = (short int)(dot*BOOSTBLURFACTOR/sum + 0.5);
       }
-   }
+    }
+    gettimeofday(&stop, NULL);
+    printTime(&start, &stop, "Smoothed in Y took: ");
 
-   free(tempim);
-   free(kernel);
+    free(tempim);
+    free(kernel);
 }
 
 /*******************************************************************************
@@ -510,11 +558,13 @@ void make_gaussian_kernel(float sigma, float **kernel, int *windowsize)
 
    for(i=0;i<(*windowsize);i++) (*kernel)[i] /= sum;
 
+   /*
    if(VERBOSE){
       printf("The filter coefficients are:\n");
       for(i=0;i<(*windowsize);i++)
          printf("kernel[%d] = %f\n", i, (*kernel)[i]);
    }
+   */
 }
 
 void printTime(const struct timeval* start,const struct timeval* stop, const char* msg)
