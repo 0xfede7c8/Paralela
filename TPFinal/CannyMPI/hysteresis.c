@@ -72,6 +72,7 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
       }
    }
 
+   /*
    for(r=0,pos=0;r<rows;r++,pos+=cols){
       edge[pos] = NOEDGE;
       edge[pos+cols-1] = NOEDGE;
@@ -81,6 +82,7 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
       edge[c] = NOEDGE;
       edge[pos] = NOEDGE;
    }
+   */
 
    /****************************************************************************
    * Compute the histogram of the magnitude image. Then use the histogram to

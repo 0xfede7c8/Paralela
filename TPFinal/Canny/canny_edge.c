@@ -186,19 +186,10 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
       fprintf(stderr, "Error allocating the edge image.\n");
       exit(1);
     }
-    /*
-    for(int r=0; r<rows;r++){
-        for(int c=0; c<cols; c++){
-            *edge[r*cols+c] = (unsigned char) smoothedim[r*cols+c];
-        }
-    }
-    */
-    *edge = (unsigned char *) smoothedim;
 
     //---------------------------------------------------------------------------
     // Compute the first derivative in the x and y directions.
     //---------------------------------------------------------------------------
-    /*
     if(VERBOSE) printf("Computing the X and Y first derivatives.\n");
     gettimeofday(&start, NULL);
     derrivative_x_y(smoothedim, rows, cols, &delta_x, &delta_y);
@@ -275,7 +266,6 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
     free(delta_y);
     free(magnitude);
     free(nms);
-    */
 
 }
 

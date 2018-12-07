@@ -40,12 +40,12 @@ Mike Heath
 #include <sys/time.h>
 #include "mpi.h"
 
+#include <string.h>
+
 #include "hysteresis.h"
 
 #define VERBOSE 0
 #define BOOSTBLURFACTOR 90.0
-
-#define NUM_PROCESSES 6
 
 int read_pgm_image(char *infilename, unsigned char **image, int *rows,
     int *cols);
@@ -53,7 +53,8 @@ int write_pgm_image(char *outfilename, unsigned char *image, int rows,
     int cols, char *comment, int maxval);
 
 void canny(unsigned char *image, int rows, int cols, float sigma,
-         float tlow, float thigh, unsigned char **edge, char *fname, int rank);
+         float tlow, float thigh, unsigned char **edge, char *fname, int rank,
+         int num_processes);
 void gaussian_smooth(unsigned char *image, int rows, int cols, float sigma,
         short int **smoothedim);
 void make_gaussian_kernel(float sigma, float **kernel, int *windowsize);
@@ -88,10 +89,11 @@ int main(int argc, char *argv[])
 
     struct timeval stop, start;
 
-    int rank, size;
+    int rank, num_processes;
     MPI_Init(&argc, &argv);
 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &num_processes);
 
     /****************************************************************************
     * Get the command line arguments.
@@ -131,8 +133,8 @@ int main(int argc, char *argv[])
           fprintf(stderr, "Error reading the input image, %s.\n", infilename);
           exit(1);
         }
-        edge = malloc(sizeof(unsigned char) * (rows/NUM_PROCESSES)*cols*NUM_PROCESSES);
     }
+    //edge = malloc(sizeof(unsigned char) * (rows*cols));
 
     /////////////////////////////////////////////////////////////////////////////
     // Perform the edge detection. All of the work takes place here.
@@ -144,7 +146,7 @@ int main(int argc, char *argv[])
       dirfilename = composedfname;
     }
     gettimeofday(&start, NULL);
-    canny(image, rows, cols, sigma, tlow, thigh, &edge, dirfilename, rank);
+    canny(image, rows, cols, sigma, tlow, thigh, &edge, dirfilename, rank, num_processes);
     gettimeofday(&stop, NULL);
     printTime(&start, &stop, "Canny took: : ");
 
@@ -176,7 +178,8 @@ int main(int argc, char *argv[])
 * DATE: 2/15/96
 *******************************************************************************/
 void canny(unsigned char *image, int rows, int cols, float sigma,
-         float tlow, float thigh, unsigned char **edge, char *fname, int rank)
+         float tlow, float thigh, unsigned char **edge, char *fname, int rank,
+         int num_processes)
 {
     FILE *fpdir=NULL;          /* File to write the gradient image to.     */
     unsigned char *nms;        /* Points that are local maximal magnitude. */
@@ -197,118 +200,80 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
     MPI_Bcast( &rows, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast( &cols, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    int *displs = (int *) malloc(sizeof(int)*NUM_PROCESSES);
-    int *scounts = (int *) malloc(sizeof(int)*NUM_PROCESSES);
-    int *rows_v = (int *) malloc(sizeof(int)*NUM_PROCESSES);
+    int *displs = (int *) malloc(sizeof(int)*num_processes);
+    int *scounts = (int *) malloc(sizeof(int)*num_processes);
+    int *rows_v = (int *) malloc(sizeof(int)*num_processes);
 
     int windowsize = 1 + 2 * ceil(2.5 * sigma);
-    int row_overlap = (windowsize/2);
+    int row_overlap = (windowsize/2)+2;
      
 
-    for(int i = 0; i<NUM_PROCESSES; i++){
+    //////////////////////////////////////////////////////////////////////////
+    // REPARTO DE LA IMAGEN
+    //////////////////////////////////////////////////////////////////////////
+    for(int i = 0; i<num_processes; i++){
 
         if(i==0) {
-            rows_v[i] = rows/NUM_PROCESSES + row_overlap;
+            rows_v[i] = rows/num_processes + row_overlap;
             scounts[i] = rows_v[i]*cols;
             displs[i] = 0;
         }
-        else if(i==NUM_PROCESSES-1){
-            int row_offset = rows - (rows/NUM_PROCESSES)*NUM_PROCESSES;
-            rows_v[i] = rows/NUM_PROCESSES + row_offset + row_overlap;
+        else if(i==num_processes-1){
+            int row_offset = rows - (rows/num_processes)*num_processes;
+            rows_v[i] = rows/num_processes + row_offset + row_overlap;
             scounts[i] = rows_v[i]*cols;
-            displs[i] = ((rows/NUM_PROCESSES)*i - row_overlap)*cols;
+            displs[i] = ((rows/num_processes)*i - row_overlap)*cols;
         } 
         else{
-            rows_v[i] = rows/NUM_PROCESSES + 2*row_overlap;
+            rows_v[i] = rows/num_processes + 2*row_overlap;
             scounts[i] = rows_v[i]*cols;
-            displs[i] = ((rows/NUM_PROCESSES)*i - row_overlap)*cols;
+            displs[i] = ((rows/num_processes)*i - row_overlap)*cols;
         }
     }
     if(rank == 0){
     printf("overlap: %d\n", row_overlap);
-    for(int i = 0; i<NUM_PROCESSES; i++){printf("rows %d: %d\n", i, rows_v[i]);}
-    for(int i = 0; i<NUM_PROCESSES; i++){printf("scount %d: %d\n", i, scounts[i]);}
-    for(int i = 0; i<NUM_PROCESSES; i++){printf("displs %d: %d\n", i, displs[i]);}
+    for(int i = 0; i<num_processes; i++){printf("rows %d: %d\n", i, rows_v[i]);}
+    for(int i = 0; i<num_processes; i++){printf("scount %d: %d\n", i, scounts[i]);}
+    for(int i = 0; i<num_processes; i++){printf("displs %d: %d\n", i, displs[i]);}
     }
-    MPI_Barrier(MPI_COMM_WORLD);
-    //rows = rows/NUM_PROCESSES;
 
-    //unsigned char *sliced_image = malloc(sizeof(unsigned char) * (rows_v[rank]*cols));
-    int sl_size = (rows/NUM_PROCESSES+ 2*row_overlap)*cols; //lo suficientemente grande para que entre en todos los procesos
+    int sl_size = (rows/num_processes+ 2*row_overlap)*cols; //lo suficientemente grande para que entre en todos los procesos
     unsigned char *sliced_image = malloc(sizeof(unsigned char) * sl_size);
     unsigned char *sliced_edge = malloc(sizeof(unsigned char) * sl_size);
-    MPI_Scatterv(image, scounts, displs, MPI_UNSIGNED_CHAR, sliced_image, sl_size, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
-    /*
-    unsigned char *sliced_image = malloc(sizeof(unsigned char) * (rows*cols));
-    unsigned char *sliced_edge = malloc(sizeof(unsigned char) * (rows*cols));
-    MPI_Scatter(image, rows*cols, MPI_UNSIGNED_CHAR, sliced_image, rows*cols, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
-    */
-
-
+    //MPI_Scatterv(image, scounts, displs, MPI_UNSIGNED_CHAR, sliced_image, sl_size, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
+    if(rank==0){
+        for(int i=1; i<num_processes; i++){
+            MPI_Send(&image[displs[i]], scounts[i], MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD);
+        }
+        sliced_image = image;
+    }
+    else{
+        MPI_Recv(sliced_image, scounts[rank], MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }
+    //////////////////////////////////////////////////////////////////////////
+    
     if(VERBOSE) printf("Smoothing the image using a gaussian kernel.\n");
     gettimeofday(&start, NULL);
-    //gaussian_smooth(sliced_image, rows_v[rank], cols, sigma, &smoothedim);
-    smoothedim = sliced_image;
+    gaussian_smooth(sliced_image, rows_v[rank], cols, sigma, &smoothedim);
+    //smoothedim = sliced_image;
     gettimeofday(&stop, NULL);
     printTime(&start, &stop, "gaussian smooth took: : ");
 
-    //sliced_edge = (unsigned char *) smoothedim;
-    if(rank==0) sliced_edge = (unsigned char *) smoothedim;
-    else sliced_edge = (unsigned char *) &smoothedim[row_overlap*cols];
-    //else sliced_edge = (unsigned char *) smoothedim;
-
-
-    int *recvcounts = (int *) malloc(sizeof(int)*NUM_PROCESSES);
-
-    for(int i=0; i<NUM_PROCESSES; i++){
-        if(rank==NUM_PROCESSES-1) recvcounts[i] = (rows - (rows/NUM_PROCESSES)*NUM_PROCESSES)*cols;
-        else recvcounts[i] = rows/NUM_PROCESSES*cols;
-        displs[i] = rows/NUM_PROCESSES*cols;
-    }
-
-    //MPI_Gatherv(sliced_edge, sl_size, MPI_UNSIGNED_CHAR, *edge, recvcounts, displs, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
-    rows = rows/6;
-    MPI_Gather(sliced_edge, rows*cols, MPI_UNSIGNED_CHAR, *edge, rows*cols, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
-    /*
     //---------------------------------------------------------------------------
     // Compute the first derivative in the x and y directions.
     //---------------------------------------------------------------------------
     if(VERBOSE) printf("Computing the X and Y first derivatives.\n");
     gettimeofday(&start, NULL);
-    derrivative_x_y(smoothedim, rows, cols, &delta_x, &delta_y);
+    derrivative_x_y(smoothedim, rows_v[rank], cols, &delta_x, &delta_y);
     gettimeofday(&stop, NULL);
     printTime(&start, &stop, "derrivative_x_y took: : ");
-
-    //---------------------------------------------------------------------------
-    // This option to write out the direction of the edge gradient was added
-    // to make the information available for computing an edge quality figure
-    // of merit.
-    //---------------------------------------------------------------------------
-    if(fname != NULL){
-      //-------------------------------------------------------------------------
-      // Compute the direction up the gradient, in radians that are
-      // specified counteclockwise from the positive x-axis.
-      //-------------------------------------------------------------------------
-      radian_direction(delta_x, delta_y, rows, cols, &dir_radians, -1, -1);
-
-      //-------------------------------------------------------------------------
-      // Write the gradient direction image out to a file.
-      //-------------------------------------------------------------------------
-      if((fpdir = fopen(fname, "wb")) == NULL){
-         fprintf(stderr, "Error opening the file %s for writing.\n", fname);
-         exit(1);
-      }
-      fwrite(dir_radians, sizeof(float), rows*cols, fpdir);
-      fclose(fpdir);
-      free(dir_radians);
-    }
 
     //---------------------------------------------------------------------------
     // Compute the magnitude of the gradient.
     //---------------------------------------------------------------------------
     if(VERBOSE) printf("Computing the magnitude of the gradient.\n");
     gettimeofday(&start, NULL);
-    magnitude_x_y(delta_x, delta_y, rows, cols, &magnitude);
+    magnitude_x_y(delta_x, delta_y, rows_v[rank], cols, &magnitude);
     gettimeofday(&stop, NULL);
     printTime(&start, &stop, "magnitude_x_y took: : ");
 
@@ -322,9 +287,55 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
     }
 
     gettimeofday(&start, NULL);
-    non_max_supp(magnitude, delta_x, delta_y, rows, cols, nms);
+    non_max_supp(magnitude, delta_x, delta_y, rows_v[rank], cols, nms);
     gettimeofday(&stop, NULL);
     printTime(&start, &stop, "no_max_supp took: : ");
+    //////////////////////////////////////////////////////////////////////////
+    // GATHER DE LA IMAGEN
+    //////////////////////////////////////////////////////////////////////////
+    for(int i = 0; i<num_processes; i++){
+        if(i==num_processes-1){
+            int row_offset = rows - (rows/num_processes)*num_processes;
+            scounts[i] = (rows/num_processes + row_offset)*cols;
+        }
+        else{
+            scounts[i] = rows/num_processes*cols;
+        }
+        displs[i] = (rows/num_processes)*cols*i;
+    }
+
+    if(rank == 0){
+    printf("overlap: %d\n", row_overlap);
+    for(int i = 0; i<num_processes; i++){printf("rows %d: %d\n", i, rows_v[i]);}
+    for(int i = 0; i<num_processes; i++){printf("scount %d: %d\n", i, scounts[i]);}
+    for(int i = 0; i<num_processes; i++){printf("displs %d: %d\n", i, displs[i]);}
+    }
+
+    short int * magnitude2 = (short int *) calloc(rows*cols,sizeof(short int));
+    if(rank==0){
+        memcpy(magnitude2, magnitude, scounts[0]*2);
+        for(int i=1; i<num_processes; i++){
+            MPI_Recv(&magnitude2[displs[i]], scounts[i], MPI_SHORT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
+    }
+    else{
+        MPI_Send(&magnitude[row_overlap*cols], scounts[rank], MPI_SHORT, 0, 0, MPI_COMM_WORLD);
+    }
+    
+    unsigned char * nms2 = (unsigned char *) calloc(rows*cols,sizeof(unsigned char));
+    if(rank==0){
+        memcpy(nms2, nms, scounts[0]);
+        for(int i=1; i<num_processes; i++){
+            MPI_Recv(&nms2[displs[i]], scounts[i], MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
+    }
+    else{
+        MPI_Send(&nms[row_overlap*cols], scounts[rank], MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
+    }
+    
+
+    if(rank==0){
+
 
     //---------------------------------------------------------------------------
     // Use hysteresis to mark the edge pixels.
@@ -336,7 +347,7 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
     }
 
     gettimeofday(&start, NULL);
-    apply_hysteresis(magnitude, nms, rows, cols, tlow, thigh, *edge);
+    apply_hysteresis(magnitude2, nms2, rows, cols, tlow, thigh, *edge);
     gettimeofday(&stop, NULL);
     printTime(&start, &stop, "apply_hysteresis took: : ");
 
@@ -349,7 +360,7 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
     free(delta_y);
     free(magnitude);
     free(nms);
-    */
+    }
 
 }
 

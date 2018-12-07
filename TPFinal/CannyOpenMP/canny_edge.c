@@ -45,7 +45,7 @@ Mike Heath
 #define VERBOSE 0
 #define BOOSTBLURFACTOR 90.0
 
-#define NUM_THREADS 6
+#define NUM_THREADS 8
 
 int read_pgm_image(char *infilename, unsigned char **image, int *rows,
     int *cols);
