@@ -100,9 +100,9 @@ void canny(unsigned char *image, const int rows, const int cols, float sigma,
    nms = (unsigned char*) malloc(nms_size);
 
 
-   gpuErrchk(cudaMemcpy(delta_x, delta_x_device, deltaSz, cudaMemcpyDeviceToHost));
-   gpuErrchk(cudaMemcpy(delta_y, delta_y_device, deltaSz, cudaMemcpyDeviceToHost));
-   gpuErrchk(cudaMemcpy(smoothedimHost, smoothedimDevice, smoothedimSz, cudaMemcpyDeviceToHost));
+   // gpuErrchk(cudaMemcpy(delta_x, delta_x_device, deltaSz, cudaMemcpyDeviceToHost));
+   // gpuErrchk(cudaMemcpy(delta_y, delta_y_device, deltaSz, cudaMemcpyDeviceToHost));
+   // gpuErrchk(cudaMemcpy(smoothedimHost, smoothedimDevice, smoothedimSz, cudaMemcpyDeviceToHost));
    gpuErrchk(cudaMemcpy(magnitude, magnitude_device, deltaSz, cudaMemcpyDeviceToHost));
    gpuErrchk(cudaMemcpy(nms, nms_device, nms_size, cudaMemcpyDeviceToHost));
 
@@ -121,14 +121,14 @@ void canny(unsigned char *image, const int rows, const int cols, float sigma,
    * Free all of the memory that we allocated except for the edge image that
    * is still being used to store out result.
    ****************************************************************************/
-   cudaFree(delta_x_device);
-   cudaFree(delta_y_device);
+   // cudaFree(delta_x_device);
+   // cudaFree(delta_y_device);
    cudaFree(magnitude);
-   cudaFree(smoothedimDevice);
+   // cudaFree(smoothedimDevice);
    cudaFree(image_device);
-   free(smoothedimHost);
-   free(delta_x);
-   free(delta_y);
+   // free(smoothedimHost);
+   // free(delta_x);
+   // free(delta_y);
    free(magnitude);
    free(nms);
 }

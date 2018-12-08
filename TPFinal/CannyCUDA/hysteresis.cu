@@ -50,8 +50,9 @@ void follow_edges(unsigned char *edgemapptr, short *edgemagptr, short lowval,
 void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
     float tlow, float thigh, unsigned char *edge)
 {
-   int r, c, pos, numedges, highcount, lowthreshold, highthreshold, hist[32768];
-   short int maximum_mag;
+   int r, c, pos, numedges, lowcount, highcount, lowthreshold, highthreshold,
+       i, hist[32768], rr, cc;
+   short int maximum_mag, sumpix;
 
    /****************************************************************************
    * Initialize the edge map to possible edges everywhere the non-maximal
@@ -139,17 +140,7 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
 
    /****************************************************************************
    * Set all the remaining possible edges to non-edges.
-   **************************************************#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-
-inline void gpuAssert(cudaError_t code, const char *file, int line)
-{
-   int abort = 1;
-   if (code != cudaSuccess)
-   {
-      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-      if (abort) exit(code);
-   }
-}**************************/
+   ****************************************************************************/
    for(r=0,pos=0;r<rows;r++){
       for(c=0;c<cols;c++,pos++) if(edge[pos] != EDGE) edge[pos] = NOEDGE;
    }
