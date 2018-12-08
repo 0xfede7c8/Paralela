@@ -67,17 +67,6 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
      else edge[pos] = NOEDGE;
       }
    }
-
-   // for(r=0,pos=0;r<rows;r++,pos+=cols){
-   //    edge[pos] = NOEDGE;
-   //    edge[pos+cols-1] = NOEDGE;
-   // }
-   // pos = (rows-1) * cols;
-   // for(c=0;c<cols;c++,pos++){
-   //    edge[c] = NOEDGE;
-   //    edge[pos] = NOEDGE;
-   // }
-
    /****************************************************************************
    * Compute the histogram of the magnitude image. Then use the histogram to
    * compute hysteresis thresholds.
@@ -219,7 +208,7 @@ void cuda_non_max_supp( short *mag,
         const short* gxptr = gradx + rowcount*ncols + colcount;
         const short* gyptr = grady + rowcount*ncols + colcount;
         unsigned char* resultptr = result + rowcount*ncols + colcount;
-        
+
         if (((rowcount < nrows - 2) && (rowcount > 0)) &&
           ((colcount < ncols - 2) && (colcount > 0)))
         {

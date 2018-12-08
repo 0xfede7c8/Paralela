@@ -68,11 +68,6 @@ void canny(unsigned char *image, const int rows, const int cols, float sigma,
    gpuErrchk(cudaMemcpy(magnitude, magnitude_device, deltaSz, cudaMemcpyDeviceToHost));
    gpuErrchk(cudaMemcpy(nms, nms_device, nms_size, cudaMemcpyDeviceToHost));
 
-       /* ---- DEBUG ---- */
-    char fn[] = "nms_cuda.pgm";
-    write_pgm_image(fn, nms, rows, cols, "", 255);
-   /* ---- DEBUG ---- */
-
    /****************************************************************************
    * Use hysteresis to mark the edge pixels.
    ****************************************************************************/
