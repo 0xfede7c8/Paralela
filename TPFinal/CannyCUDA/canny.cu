@@ -58,7 +58,6 @@ void canny(unsigned char *image, const int rows, const int cols, float sigma,
 
    non_max_supp(magnitude_device, delta_x_device, delta_y_device, rows, cols, &nms_device);
 
-   // /*Testing host reallock to check workingshit*/
    const size_t deltaSz = rows*cols*sizeof(short int);
    magnitude = (short int*) malloc(deltaSz);
 
