@@ -89,10 +89,10 @@ int main(int argc, char *argv[])
    /****************************************************************************
    * Write out the edge image to a file.
    ****************************************************************************/
-   sprintf(outfilename, "%s_s_%3.2f_l_%3.2f_h_%3.2f.pgm", infilename,
-      sigma, tlow, thigh);
+   sprintf(outfilename, "%s_s_%3.2f_l_%3.2f_h_%3.2f.pgm", infilename, sigma, tlow, thigh);
+   char msg[] = "";  // Remove warning 
    if(VERBOSE) printf("Writing the edge iname in the file %s.\n", outfilename);
-   if(write_pgm_image(outfilename, edge, rows, cols, "", 255) == 0){
+   if(write_pgm_image(outfilename, edge, rows, cols, msg, 255) == 0){
       fprintf(stderr, "Error writing the edge image, %s.\n", outfilename);
       exit(1);
    }

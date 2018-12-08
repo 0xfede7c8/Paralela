@@ -11,11 +11,6 @@
 
 #include "hysteresis.h"
 
-#define VERBOSE 1
-#define NOEDGE 255
-#define POSSIBLE_EDGE 128
-#define EDGE 0
-
 /*******************************************************************************
 * PROCEDURE: follow_edges
 * PURPOSE: This procedure edges is a recursive routine that traces edgs along
@@ -53,9 +48,10 @@ void follow_edges(unsigned char *edgemapptr, short *edgemagptr, short lowval,
 * DATE: 2/15/96
 *******************************************************************************/
 void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
-	float tlow, float thigh, unsigned char *edge)
+    float tlow, float thigh, unsigned char *edge)
 {
-   int r, c, pos, numedges, highcount, lowthreshold, highthreshold, hist[32768];
+   int r, c, pos, numedges, highcount, lowthreshold, highthreshold,
+       hist[32768];
    short int maximum_mag;
 
    /****************************************************************************
@@ -67,21 +63,10 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
    ****************************************************************************/
    for(r=0,pos=0;r<rows;r++){
       for(c=0;c<cols;c++,pos++){
-	 if(nms[pos] == POSSIBLE_EDGE) edge[pos] = POSSIBLE_EDGE;
-	 else edge[pos] = NOEDGE;
+     if(nms[pos] == POSSIBLE_EDGE) edge[pos] = POSSIBLE_EDGE;
+     else edge[pos] = NOEDGE;
       }
    }
-
-   for(r=0,pos=0;r<rows;r++,pos+=cols){
-      edge[pos] = NOEDGE;
-      edge[pos+cols-1] = NOEDGE;
-   }
-   pos = (rows-1) * cols;
-   for(c=0;c<cols;c++,pos++){
-      edge[c] = NOEDGE;
-      edge[pos] = NOEDGE;
-   }
-
    /****************************************************************************
    * Compute the histogram of the magnitude image. Then use the histogram to
    * compute hysteresis thresholds.
@@ -89,7 +74,7 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
    for(r=0;r<32768;r++) hist[r] = 0;
    for(r=0,pos=0;r<rows;r++){
       for(c=0;c<cols;c++,pos++){
-	 if(edge[pos] == POSSIBLE_EDGE) hist[mag[pos]]++;
+     if(edge[pos] == POSSIBLE_EDGE) hist[mag[pos]]++;
       }
    }
 
@@ -124,9 +109,9 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
 
    if(VERBOSE){
       printf("The input low and high fractions of %f and %f computed to\n",
-	 tlow, thigh);
+     tlow, thigh);
       printf("magnitude of the gradient threshold values of: %d %d\n",
-	 lowthreshold, highthreshold);
+     lowthreshold, highthreshold);
    }
 
    /****************************************************************************
@@ -135,26 +120,16 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
    ****************************************************************************/
    for(r=0,pos=0;r<rows;r++){
       for(c=0;c<cols;c++,pos++){
-	 if((edge[pos] == POSSIBLE_EDGE) && (mag[pos] >= highthreshold)){
+     if((edge[pos] == POSSIBLE_EDGE) && (mag[pos] >= highthreshold)){
             edge[pos] = EDGE;
             follow_edges((edge+pos), (mag+pos), lowthreshold, cols);
-	 }
+     }
       }
    }
 
    /****************************************************************************
    * Set all the remaining possible edges to non-edges.
-   **************************************************#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-
-inline void gpuAssert(cudaError_t code, const char *file, int line)
-{
-   int abort = 1;
-   if (code != cudaSuccess)
-   {
-      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-      if (abort) exit(code);
-   }
-}**************************/
+   ****************************************************************************/
    for(r=0,pos=0;r<rows;r++){
       for(c=0;c<cols;c++,pos++) if(edge[pos] != EDGE) edge[pos] = NOEDGE;
    }
@@ -165,36 +140,13 @@ void cuda_zero_edges( unsigned char* result,
                       int rows,
                       int cols)
 {
-    int count;
-    unsigned char* resultrowptr;
-    unsigned char* resultptr;
+    const int rowcount = blockIdx.y * blockDim.y + threadIdx.y;
+    const int colcount = blockIdx.x * blockDim.x + threadIdx.x;
 
-    for(count=0,
-        resultrowptr = result,
-        resultptr = result + cols*(rows-1);
-
-        count<cols;
-
-        resultptr++,
-        resultrowptr++,
-        count++)
-
-        {
-            *resultrowptr = *resultptr = (unsigned char) 0;
-        }
-
-    for(count=0,
-        resultptr = result,
-        resultrowptr= result + cols-1;
-
-        count<rows;
-
-        count++,
-        resultptr+=cols,
-        resultrowptr+=cols)
-        {
-            *resultptr = *resultrowptr = (unsigned char) 0;
-        }
+    if (rowcount == 0 || rowcount == rows - 1 || colcount == 0 || colcount == cols - 1 )
+    {
+        *(result + (rowcount*rows + colcount)) = (unsigned char) 0;
+    }
 }
 
 void non_max_supp(  short *mag,
@@ -217,15 +169,19 @@ void non_max_supp(  short *mag,
         printf("%s", "Zeros\n");
     }
 
-    dim3 dimGrid(cols/TILE_WIDTH , rows/TILE_HEIGHT, 1);
-    dim3 dimBlock(TILE_WIDTH, TILE_HEIGHT);
-    cuda_zero_edges<<<dimGrid, dimBlock>>>(*result, rows, cols);
+    dim3 dgrid;
+    dim3 dblock;
+   
+    get_dimgrid(&dgrid, cols, rows);
+    get_dimblock(&dblock);
+
+    cuda_zero_edges<<<dgrid, dblock>>>(*result, rows, cols);
 
     if (VERBOSE)
     {
         printf("%s", "NMS\n");
     }
-    cuda_non_max_supp<<<dimGrid, dimBlock>>>(mag, gradx, grady, rows, cols, *result);
+    cuda_non_max_supp<<<dgrid, dblock>>>(mag, gradx, grady, rows, cols, *result);
 }
 
 __global__
@@ -242,184 +198,182 @@ void cuda_non_max_supp( short *mag,
 
     const int rowcount = blockIdx.y * blockDim.y + threadIdx.y;
     const int colcount = blockIdx.x * blockDim.x + threadIdx.x;
-    /****************************************************************************
-    * Suppress non-maximum points.
-    ****************************************************************************/
 
-    const short* magrowptr = mag + ncols + rowcount;
-    const short* gxrowptr = gradx + ncols + ncols*rowcount;
-    const short* gyrowptr = grady + ncols + ncols*rowcount;
-    unsigned char* resultrowptr = result + ncols + ncols*rowcount;
-
-    const short* magptr = magrowptr + colcount;
-    const short* gxptr = gxrowptr + colcount;
-    const short* gyptr = gyrowptr + colcount;
-    unsigned char* resultptr = resultrowptr + colcount;
-
-    if (((rowcount < nrows - 2) && (rowcount > 0)) &&
-        ((colcount < ncols - 2) && (colcount > 0)))
+    if (rowcount > 0 && colcount > 0 && rowcount < nrows - 2 && colcount < ncols - 2)
     {
-        m00 = *magptr;
-        if(m00 == 0)
+        /****************************************************************************
+        * Suppress non-maximum points.
+        ****************************************************************************/
+        const short* magptr = mag + rowcount*ncols + colcount;
+        const short* gxptr = gradx + rowcount*ncols + colcount;
+        const short* gyptr = grady + rowcount*ncols + colcount;
+        unsigned char* resultptr = result + rowcount*ncols + colcount;
+
+        if (((rowcount < nrows - 2) && (rowcount > 0)) &&
+          ((colcount < ncols - 2) && (colcount > 0)))
         {
-            *resultptr = (unsigned char) NOEDGE;
-        }
-        else
-        {
-            xperp = -(gx = *gxptr)/((float)m00);
-            yperp = (gy = *gyptr)/((float)m00);
-        }
-        if(gx >= 0)
-        {
-            if(gy >= 0)
-            {
-                if (gx >= gy)
-                {
-                    /* 111 */
-                    /* Left point */
-                    z1 = *(magptr - 1);
-                    z2 = *(magptr - ncols - 1);
+          m00 = *magptr;
+          if(m00 == 0)
+          {
+              *resultptr = (unsigned char) NOEDGE;
+          }
+          else
+          {
+              xperp = -(gx = *gxptr)/((float)m00);
+              yperp = (gy = *gyptr)/((float)m00);
+          }
+          if(gx >= 0)
+          {
+              if(gy >= 0)
+              {
+                  if (gx >= gy)
+                  {
+                      /* 111 */
+                      /* Left point */
+                      z1 = *(magptr - 1);
+                      z2 = *(magptr - ncols - 1);
 
-                    mag1 = (m00 - z1)*xperp + (z2 - z1)*yperp;
+                      mag1 = (m00 - z1)*xperp + (z2 - z1)*yperp;
 
-                    /* Right point */
-                    z1 = *(magptr + 1);
-                    z2 = *(magptr + ncols + 1);
+                      /* Right point */
+                      z1 = *(magptr + 1);
+                      z2 = *(magptr + ncols + 1);
 
-                    mag2 = (m00 - z1)*xperp + (z2 - z1)*yperp;
-                }
-                else
-                {
-                    /* 110 */
-                    /* Left point */
-                    z1 = *(magptr - ncols);
-                    z2 = *(magptr - ncols - 1);
+                      mag2 = (m00 - z1)*xperp + (z2 - z1)*yperp;
+                  }
+                  else
+                  {
+                      /* 110 */
+                      /* Left point */
+                      z1 = *(magptr - ncols);
+                      z2 = *(magptr - ncols - 1);
 
-                    mag1 = (z1 - z2)*xperp + (z1 - m00)*yperp;
+                      mag1 = (z1 - z2)*xperp + (z1 - m00)*yperp;
 
-                    /* Right point */
-                    z1 = *(magptr + ncols);
-                    z2 = *(magptr + ncols + 1);
+                      /* Right point */
+                      z1 = *(magptr + ncols);
+                      z2 = *(magptr + ncols + 1);
 
-                    mag2 = (z1 - z2)*xperp + (z1 - m00)*yperp;
-                }
-            }
-            else
-            {
-                if (gx >= -gy)
-                {
-                    /* 101 */
-                    /* Left point */
-                    z1 = *(magptr - 1);
-                    z2 = *(magptr + ncols - 1);
+                      mag2 = (z1 - z2)*xperp + (z1 - m00)*yperp;
+                  }
+              }
+              else
+              {
+                  if (gx >= -gy)
+                  {
+                      /* 101 */
+                      /* Left point */
+                      z1 = *(magptr - 1);
+                      z2 = *(magptr + ncols - 1);
 
-                    mag1 = (m00 - z1)*xperp + (z1 - z2)*yperp;
+                      mag1 = (m00 - z1)*xperp + (z1 - z2)*yperp;
 
-                    /* Right point */
-                    z1 = *(magptr + 1);
-                    z2 = *(magptr - ncols + 1);
+                      /* Right point */
+                      z1 = *(magptr + 1);
+                      z2 = *(magptr - ncols + 1);
 
-                    mag2 = (m00 - z1)*xperp + (z1 - z2)*yperp;
-                }
-                else
-                {
-                    /* 100 */
-                    /* Left point */
-                    z1 = *(magptr + ncols);
-                    z2 = *(magptr + ncols - 1);
+                      mag2 = (m00 - z1)*xperp + (z1 - z2)*yperp;
+                  }
+                  else
+                  {
+                      /* 100 */
+                      /* Left point */
+                      z1 = *(magptr + ncols);
+                      z2 = *(magptr + ncols - 1);
 
-                    mag1 = (z1 - z2)*xperp + (m00 - z1)*yperp;
+                      mag1 = (z1 - z2)*xperp + (m00 - z1)*yperp;
 
-                    /* Right point */
-                    z1 = *(magptr - ncols);
-                    z2 = *(magptr - ncols + 1);
+                      /* Right point */
+                      z1 = *(magptr - ncols);
+                      z2 = *(magptr - ncols + 1);
 
-                    mag2 = (z1 - z2)*xperp  + (m00 - z1)*yperp;
-                }
-            }
-        }
-        else
-        {
-            if ((gy = *gyptr) >= 0)
-            {
-                if (-gx >= gy)
-                {
-                    /* 011 */
-                    /* Left point */
-                    z1 = *(magptr + 1);
-                    z2 = *(magptr - ncols + 1);
+                      mag2 = (z1 - z2)*xperp  + (m00 - z1)*yperp;
+                  }
+              }
+          }
+          else
+          {
+              if ((gy = *gyptr) >= 0)
+              {
+                  if (-gx >= gy)
+                  {
+                      /* 011 */
+                      /* Left point */
+                      z1 = *(magptr + 1);
+                      z2 = *(magptr - ncols + 1);
 
-                    mag1 = (z1 - m00)*xperp + (z2 - z1)*yperp;
+                      mag1 = (z1 - m00)*xperp + (z2 - z1)*yperp;
 
-                    /* Right point */
-                    z1 = *(magptr - 1);
-                    z2 = *(magptr + ncols - 1);
+                      /* Right point */
+                      z1 = *(magptr - 1);
+                      z2 = *(magptr + ncols - 1);
 
-                    mag2 = (z1 - m00)*xperp + (z2 - z1)*yperp;
-                }
-                else
-                {
-                    /* 010 */
-                    /* Left point */
-                    z1 = *(magptr - ncols);
-                    z2 = *(magptr - ncols + 1);
+                      mag2 = (z1 - m00)*xperp + (z2 - z1)*yperp;
+                  }
+                  else
+                  {
+                      /* 010 */
+                      /* Left point */
+                      z1 = *(magptr - ncols);
+                      z2 = *(magptr - ncols + 1);
 
-                    mag1 = (z2 - z1)*xperp + (z1 - m00)*yperp;
+                      mag1 = (z2 - z1)*xperp + (z1 - m00)*yperp;
 
-                    /* Right point */
-                    z1 = *(magptr + ncols);
-                    z2 = *(magptr + ncols - 1);
+                      /* Right point */
+                      z1 = *(magptr + ncols);
+                      z2 = *(magptr + ncols - 1);
 
-                    mag2 = (z2 - z1)*xperp + (z1 - m00)*yperp;
-                }
-            }
-            else
-            {
-                if (-gx > -gy)
-                {
-                    /* 001 */
-                    /* Left point */
-                    z1 = *(magptr + 1);
-                    z2 = *(magptr + ncols + 1);
+                      mag2 = (z2 - z1)*xperp + (z1 - m00)*yperp;
+                  }
+              }
+              else
+              {
+                  if (-gx > -gy)
+                  {
+                      /* 001 */
+                      /* Left point */
+                      z1 = *(magptr + 1);
+                      z2 = *(magptr + ncols + 1);
 
-                    mag1 = (z1 - m00)*xperp + (z1 - z2)*yperp;
+                      mag1 = (z1 - m00)*xperp + (z1 - z2)*yperp;
 
-                    /* Right point */
-                    z1 = *(magptr - 1);
-                    z2 = *(magptr - ncols - 1);
+                      /* Right point */
+                      z1 = *(magptr - 1);
+                      z2 = *(magptr - ncols - 1);
 
-                    mag2 = (z1 - m00)*xperp + (z1 - z2)*yperp;
-                }
-                else
-                {
-                    /* 000 */
-                    /* Left point */
-                    z1 = *(magptr + ncols);
-                    z2 = *(magptr + ncols + 1);
+                      mag2 = (z1 - m00)*xperp + (z1 - z2)*yperp;
+                  }
+                  else
+                  {
+                      /* 000 */
+                      /* Left point */
+                      z1 = *(magptr + ncols);
+                      z2 = *(magptr + ncols + 1);
 
-                    mag1 = (z2 - z1)*xperp + (m00 - z1)*yperp;
+                      mag1 = (z2 - z1)*xperp + (m00 - z1)*yperp;
 
-                    /* Right point */
-                    z1 = *(magptr - ncols);
-                    z2 = *(magptr - ncols - 1);
+                      /* Right point */
+                      z1 = *(magptr - ncols);
+                      z2 = *(magptr - ncols - 1);
 
-                    mag2 = (z2 - z1)*xperp + (m00 - z1)*yperp;
-                }
-            }
-        }
+                      mag2 = (z2 - z1)*xperp + (m00 - z1)*yperp;
+                  }
+              }
+          }
 
-        /* Now determine if the current point is a maximum point */
+          /* Now determine if the current point is a maximum point */
 
-        if ((mag1 > 0.0) || (mag2 > 0.0))
-        {
-            *resultptr = (unsigned char) NOEDGE;
-        }
-        else
-        {
-            if (mag2 == 0.0)
-            *resultptr = (unsigned char) NOEDGE;
-            else
-            *resultptr = (unsigned char) POSSIBLE_EDGE;
+          if ((mag1 > 0.0) || (mag2 > 0.0))
+          {
+              *resultptr = (unsigned char) NOEDGE;
+          }
+          else
+          {
+              if (mag2 == 0.0)
+              *resultptr = (unsigned char) NOEDGE;
+              else
+              *resultptr = (unsigned char) POSSIBLE_EDGE;
+          }
         }
     }
 }

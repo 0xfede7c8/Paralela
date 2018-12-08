@@ -1,4 +1,5 @@
 # Object files
+*.pgm
 canny_edge
 canny_edgeCUDA
 *.o

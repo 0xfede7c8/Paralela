@@ -1,7 +1,7 @@
 #ifndef CANNY_EDGE_H
 #define CANNY_EDGE_H
 
-#define VERBOSE 1
+#define VERBOSE 0
 #define BOOSTBLURFACTOR 90.0
 
 #include <cuda.h>
@@ -35,8 +35,6 @@ void cuda_gaussian_smoothX( const unsigned char* image,
                             const int            rows,
                             const int            cols,
                             const float*         kernel,
-                            short int*           smoothedim,
-                            const int            windowsize,
                             const int            center);
 
 __global__
@@ -46,7 +44,6 @@ void cuda_gaussian_smoothY( const unsigned char* image,
                             const int            cols,
                             const float*         kernel,
                             short int*           smoothedim,
-                            const int            windowsize,
                             const int            center);
 
 __global__

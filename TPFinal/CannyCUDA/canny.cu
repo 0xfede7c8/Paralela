@@ -6,25 +6,18 @@
 
 void canny(unsigned char *image, const int rows, const int cols, float sigma,
          float tlow, float thigh, unsigned char **edge, char *fname)
-{
-  // FILE *fpdir=NULL;          /* File to write the gradient image to.     */
+{  
    unsigned char *nms_device,
                  *nms;        /* Points that are local maximal magnitude. */
-   short int *smoothedimHost, /* The image after gaussian smoothing.      */
-             *smoothedimDevice, /* The device image after gaussian smoothing.      */
+   short int *smoothedimDevice, /* The device image after gaussian smoothing.      */
              *delta_x_device,        /* The first devivative image, x-direction. */
              *delta_y_device,        /* The first derivative image, y-direction. */
-             *delta_x,        /* The first devivative image, x-direction. */
-             *delta_y,        /* The first derivative image, y-direction. */
              *magnitude_device,      /* The magnitude of the gradient image.      */
              *magnitude;
-   // float *dir_radians=NULL;   /* Gradient direction image.                */
 
    unsigned char* image_device, edge_device;
 
    size_t smoothedimSz = (rows*cols)*sizeof(short int);
-
-   smoothedimHost = (short int *) malloc(smoothedimSz);
 
    /****************************************************************************
    * Allocs memory for cuda image operations and copies the read info into it.
@@ -51,31 +44,6 @@ void canny(unsigned char *image, const int rows, const int cols, float sigma,
    derrivative_x_y(smoothedimDevice, rows, cols, &delta_x_device, &delta_y_device);
 
    /****************************************************************************
-   * This option to write out the direction of the edge gradient was added
-   * to make the information available for computing an edge quality figure
-   * of merit. (NOT IMPLEMENTED IN CUDA)
-   ****************************************************************************/
-
-   // if(fname != NULL){
-   //    /*************************************************************************
-   //    * Compute the direction up the gradient, in radians that are
-   //    * specified counteclockwise from the positive x-axis.
-   //    *************************************************************************/
-   //    radian_direction(delta_y_device, delta_y, rows, cols, &dir_radians, -1, -1);
-   //
-   //    /*************************************************************************
-   //    * Write the gradient direction image out to a file.
-   //    *************************************************************************/
-   //    if((fpdir = fopen(fname, "wb")) == NULL){
-   //       fprintf(stderr, "Error opening the file %s for writing.\n", fname);
-   //       exit(1);
-   //    }
-   //    fwrite(dir_radians, sizeof(float), rows*cols, fpdir);
-   //    fclose(fpdir);
-   //    free(dir_radians);
-   // }
-
-   /****************************************************************************
    * Compute the magnitude of the gradient.
    ****************************************************************************/
    if(VERBOSE) printf("Computing the magnitude of the gradient.\n");
@@ -90,19 +58,12 @@ void canny(unsigned char *image, const int rows, const int cols, float sigma,
 
    non_max_supp(magnitude_device, delta_x_device, delta_y_device, rows, cols, &nms_device);
 
-   // /*Testing host reallock to check workingshit*/
-   const size_t deltaSz = rows*cols*sizeof(short);
-   delta_x = (short *) malloc(deltaSz);
-   delta_y = (short *) malloc(deltaSz);
-   magnitude = (short *) malloc(deltaSz);
+   const size_t deltaSz = rows*cols*sizeof(short int);
+   magnitude = (short int*) malloc(deltaSz);
 
    const size_t nms_size = rows*cols * sizeof(unsigned char);
    nms = (unsigned char*) malloc(nms_size);
 
-
-   gpuErrchk(cudaMemcpy(delta_x, delta_x_device, deltaSz, cudaMemcpyDeviceToHost));
-   gpuErrchk(cudaMemcpy(delta_y, delta_y_device, deltaSz, cudaMemcpyDeviceToHost));
-   gpuErrchk(cudaMemcpy(smoothedimHost, smoothedimDevice, smoothedimSz, cudaMemcpyDeviceToHost));
    gpuErrchk(cudaMemcpy(magnitude, magnitude_device, deltaSz, cudaMemcpyDeviceToHost));
    gpuErrchk(cudaMemcpy(nms, nms_device, nms_size, cudaMemcpyDeviceToHost));
 
@@ -110,7 +71,7 @@ void canny(unsigned char *image, const int rows, const int cols, float sigma,
    * Use hysteresis to mark the edge pixels.
    ****************************************************************************/
    if(VERBOSE) printf("Doing hysteresis thresholding.\n");
-   if((*edge=(unsigned char *)calloc(rows*cols,sizeof(unsigned char))) ==NULL){
+   if((*edge=(unsigned char *)calloc(rows*cols, sizeof(unsigned char))) ==NULL){
       fprintf(stderr, "Error allocating the edge image.\n");
       exit(1);
    }
@@ -126,9 +87,6 @@ void canny(unsigned char *image, const int rows, const int cols, float sigma,
    cudaFree(magnitude);
    cudaFree(smoothedimDevice);
    cudaFree(image_device);
-   free(smoothedimHost);
-   free(delta_x);
-   free(delta_y);
    free(magnitude);
    free(nms);
 }
@@ -216,12 +174,15 @@ void magnitude_x_y( short int *delta_x,
                     int rows, int cols,
                     short int **magnitude)
 {
-    gpuErrchk(cudaMalloc((void**) magnitude, rows*cols*sizeof(short)));
+    gpuErrchk(cudaMalloc((void**) magnitude, rows*cols*sizeof(short int)));
 
-    dim3 dimGrid(cols/TILE_WIDTH , rows/TILE_HEIGHT, 1);
-    dim3 dimBlock(TILE_WIDTH, TILE_HEIGHT);
+    dim3 dgrid;
+    dim3 dblock;
+   
+    get_dimgrid(&dgrid, cols, rows);
+    get_dimblock(&dblock);
 
-    cuda_magnitude_x_y<<<dimGrid, dimBlock>>>(delta_x, delta_y, rows, cols, *magnitude);
+    cuda_magnitude_x_y<<<dgrid, dblock>>>(delta_x, delta_y, rows, cols, *magnitude);
 
 }
 
@@ -235,12 +196,14 @@ void cuda_magnitude_x_y(short int *delta_x,
     const int r = blockIdx.y * blockDim.y + threadIdx.y;
     const int c = blockIdx.x * blockDim.x + threadIdx.x;
 
-    const int pos = r*cols + c;
+    if (r < rows && c < cols)
+    {
+        const int pos = r*cols + c;
+        const int sq1 = (int)delta_x[pos] * (int)delta_x[pos];
+        const int sq2 = (int)delta_y[pos] * (int)delta_y[pos];
 
-    const int sq1 = (int)delta_x[pos] * (int)delta_x[pos];
-    const int sq2 = (int)delta_y[pos] * (int)delta_y[pos];
-
-    magnitude[pos] = (short)(0.5 + sqrt((float)sq1 + (float)sq2));
+        magnitude[pos] = (short)(0.5 + sqrt((float)sq1 + (float)sq2));
+    }
 }
 
 /*******************************************************************************
@@ -273,11 +236,14 @@ void derrivative_x_y(   short int* smoothedimDevice,
    * losing pixels.
    ****************************************************************************/
 
-   dim3 dimGrid(cols/TILE_WIDTH , rows/TILE_HEIGHT, 1);
-   dim3 dimBlock(TILE_WIDTH, TILE_HEIGHT);
+   dim3 dgrid;
+   dim3 dblock;
+   
+   get_dimgrid(&dgrid, cols, rows);
+   get_dimblock(&dblock);
 
    if(VERBOSE) printf("   Computing the X-Y direction derivative.\n");
-   cuda_derrivative_x_y<<<dimGrid, dimBlock>>>(smoothedimDevice, rows, cols, *delta_xDevice, *delta_yDevice);
+   cuda_derrivative_x_y<<<dgrid, dblock>>>(smoothedimDevice, rows, cols, *delta_xDevice, *delta_yDevice);
 }
 
 
@@ -290,42 +256,45 @@ void cuda_derrivative_x_y(  short int* smoothedimDevice,
                             short int* delta_yDevice)
 {
 
-    const int r = blockIdx.y * blockDim.y + threadIdx.y;
-    const int c = blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int r = blockIdx.y * blockDim.y + threadIdx.y;
+    const unsigned int c = blockIdx.x * blockDim.x + threadIdx.x;
 
-    int pos;
+    if (r < rows && c < cols)
+    {
+        unsigned int pos;
 
-    pos = r * cols + c;
+        pos = r * cols + c;
 
-    if (c == 0)
-    {
-        delta_xDevice[pos] = smoothedimDevice[pos+1] - smoothedimDevice[pos];
-    }
-    else if (c == (cols - 1))
-    {
-        delta_xDevice[pos] = smoothedimDevice[pos] - smoothedimDevice[pos-1];
-    }
-    else
-    {
-        delta_xDevice[pos] = smoothedimDevice[pos+1] - smoothedimDevice[pos-1];
-    }
+        if (c == 0u)
+        {
+            delta_xDevice[pos] = smoothedimDevice[pos+1] - smoothedimDevice[pos];
+        }
+        else if (c == (cols - 1))
+        {
+            delta_xDevice[pos] = smoothedimDevice[pos] - smoothedimDevice[pos-1];
+        }
+        else
+        {
+            delta_xDevice[pos] = smoothedimDevice[pos+1] - smoothedimDevice[pos-1];
+        }
 
-    /****************************************************************************
-    * Compute the y-derivative. Adjust the derivative at the borders to avoid
-    * losing pixels.
-    ****************************************************************************/
+        /****************************************************************************
+        * Compute the y-derivative. Adjust the derivative at the borders to avoid
+        * losing pixels.
+        ****************************************************************************/
 
-    if (r == 0)
-    {
-        delta_yDevice[pos] = smoothedimDevice[pos+cols] - smoothedimDevice[pos];
-    }
-    else if (r == (rows - 1))
-    {
-        delta_yDevice[pos] = smoothedimDevice[pos] - smoothedimDevice[pos-cols];
-    }
-    else
-    {
-        delta_yDevice[pos] = smoothedimDevice[pos+cols] - smoothedimDevice[pos-cols];
+        if (r == 0)
+        {
+            delta_yDevice[pos] = smoothedimDevice[pos+cols] - smoothedimDevice[pos];
+        }
+        else if (r == (rows - 1))
+        {
+            delta_yDevice[pos] = smoothedimDevice[pos] - smoothedimDevice[pos-cols];
+        }
+        else
+        {
+            delta_yDevice[pos] = smoothedimDevice[pos+cols] - smoothedimDevice[pos-cols];
+        }
     }
 }
 
@@ -351,25 +320,31 @@ void gaussian_smooth(unsigned char *image, int rows, int cols, float sigma,
    if(VERBOSE) printf("   Computing the gaussian smoothing kernel.\n");
    make_gaussian_kernel(sigma, &kernel, &windowsize);
 
-   size_t kernelSz =  windowsize * sizeof(float);
+   size_t kernelSz = windowsize * sizeof(float);
 
-   /****************************************************************************
+   /*
+   ***************************************************************************
    * Allocate a temporary buffer image
-   ****************************************************************************/
+   ***************************************************************************
+   */
    gpuErrchk(cudaMalloc((void**)&kernelDevice, kernelSz));
    gpuErrchk(cudaMalloc((void**)&tempim, (rows*cols)*sizeof(float)));
 
    /*Copy kernel to gpu*/
    gpuErrchk(cudaMemcpy(kernelDevice, kernel, kernelSz, cudaMemcpyHostToDevice));
 
-   dim3 dimGrid(cols/TILE_WIDTH , rows/TILE_HEIGHT, 1);
-   dim3 dimBlock(TILE_WIDTH, TILE_HEIGHT);
-
    const int center = windowsize / 2;
 
    if(VERBOSE) printf("   Bluring the image.\n");
-   cuda_gaussian_smoothX<<<dimGrid, dimBlock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, windowsize, center);
-   cuda_gaussian_smoothY<<<dimGrid, dimBlock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, windowsize, center);
+
+   dim3 dgrid;
+   dim3 dblock;
+   
+   get_dimgrid(&dgrid, cols, rows);
+   get_dimblock(&dblock);
+   
+   cuda_gaussian_smoothX<<<dgrid, dblock>>>(image, tempim, rows, cols, kernelDevice, center);
+   cuda_gaussian_smoothY<<<dgrid, dblock>>>(image, tempim, rows, cols, kernelDevice, smoothedim, center);
 
    cudaFree(kernelDevice);
    cudaFree(tempim);
@@ -382,27 +357,25 @@ void cuda_gaussian_smoothX( const unsigned char* image,
                             const int            rows,
                             const int            cols,
                             const float*         kernel,
-                            short int*           smoothedim,
-                            const int            windowsize,
                             const int            center)
 {
-
    const int r = blockIdx.y * blockDim.y + threadIdx.y;
    const int c = blockIdx.x * blockDim.x + threadIdx.x;
-
-   /****************************************************************************
-   * Blur in the x - direction.
-   ****************************************************************************/
-   float dot = 0.0;
-   float sum = 0.0;
-   int cc;
-   for(cc=(-center);cc<=center;cc++){
-      if(((c+cc) >= 0) && ((c+cc) < cols)){
-         dot += (float)image[r*cols+(c+cc)] * kernel[center+cc];
-         sum += kernel[center+cc];
-      }
+   if (r < rows && c < cols)
+   {
+        int cc;
+        float dot = 0.0;
+        float sum = 0.0;
+        for(cc=(-center);cc<=center;cc++)
+        {
+            if(((c+cc) >= 0) && ((c+cc) < cols))
+            {
+                dot += (float)image[r*cols+(c+cc)] * kernel[center+cc];
+                sum += kernel[center+cc];
+            }
+        }
+        tempim[r*cols+c] = dot/sum;
    }
-   tempim[r*cols+c] = dot/sum;
 }
 
 __global__
@@ -412,27 +385,26 @@ void cuda_gaussian_smoothY( const unsigned char* image,
                             const int            cols,
                             const float*         kernel,
                             short int*           smoothedim,
-                            const int            windowsize,
                             const int            center)
 {
-
    const int r = blockIdx.y * blockDim.y + threadIdx.y;
    const int c = blockIdx.x * blockDim.x + threadIdx.x;
-
-
-   /****************************************************************************
-   * Blur in the y - direction.
-   ****************************************************************************/
-   float dot = 0.0;
-   float sum = 0.0;
-   int rr;
-   for(rr=(-center);rr<=center;rr++){
-      if(((r+rr) >= 0) && ((r+rr) < rows)){
-         dot += tempim[(r+rr)*cols+c] * kernel[center+rr];
-         sum += kernel[center+rr];
-      }
-   }
-   smoothedim[r*cols+c] = (short int)(dot*BOOSTBLURFACTOR/sum + 0.5);
+   
+   if (r < rows && c < cols)
+   {
+       float dot = 0.0;
+       float sum = 0.0;
+       int rr;
+       for(rr=(-center); rr<=center; rr++)
+       {
+            if(((r+rr) >= 0) && ((r+rr) < rows))
+            {
+                dot += tempim[(r+rr)*cols+c] * kernel[center+rr];
+                sum += kernel[center+rr];
+            }
+       }
+       smoothedim[r*cols+c] = (short int)(dot*BOOSTBLURFACTOR/sum + 0.5);
+    }
 }
 
 
