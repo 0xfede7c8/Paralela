@@ -1,7 +1,7 @@
 #ifndef CANNY_EDGE_H
 #define CANNY_EDGE_H
 
-#define VERBOSE 1
+#define VERBOSE 0
 #define BOOSTBLURFACTOR 90.0
 
 #include <cuda.h>

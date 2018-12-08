@@ -6,25 +6,18 @@
 
 void canny(unsigned char *image, const int rows, const int cols, float sigma,
          float tlow, float thigh, unsigned char **edge, char *fname)
-{
-  // FILE *fpdir=NULL;          /* File to write the gradient image to.     */
+{  
    unsigned char *nms_device,
                  *nms;        /* Points that are local maximal magnitude. */
-   short int *smoothedimHost, /* The image after gaussian smoothing.      */
-             *smoothedimDevice, /* The device image after gaussian smoothing.      */
+   short int *smoothedimDevice, /* The device image after gaussian smoothing.      */
              *delta_x_device,        /* The first devivative image, x-direction. */
              *delta_y_device,        /* The first derivative image, y-direction. */
-             *delta_x,        /* The first devivative image, x-direction. */
-             *delta_y,        /* The first derivative image, y-direction. */
              *magnitude_device,      /* The magnitude of the gradient image.      */
              *magnitude;
-   // float *dir_radians=NULL;   /* Gradient direction image.                */
 
    unsigned char* image_device, edge_device;
 
    size_t smoothedimSz = (rows*cols)*sizeof(short int);
-
-   smoothedimHost = (short int *) malloc(smoothedimSz);
 
    /****************************************************************************
    * Allocs memory for cuda image operations and copies the read info into it.
@@ -51,31 +44,6 @@ void canny(unsigned char *image, const int rows, const int cols, float sigma,
    derrivative_x_y(smoothedimDevice, rows, cols, &delta_x_device, &delta_y_device);
 
    /****************************************************************************
-   * This option to write out the direction of the edge gradient was added
-   * to make the information available for computing an edge quality figure
-   * of merit. (NOT IMPLEMENTED IN CUDA)
-   ****************************************************************************/
-
-   // if(fname != NULL){
-   //    /*************************************************************************
-   //    * Compute the direction up the gradient, in radians that are
-   //    * specified counteclockwise from the positive x-axis.
-   //    *************************************************************************/
-   //    radian_direction(delta_y_device, delta_y, rows, cols, &dir_radians, -1, -1);
-   //
-   //    /*************************************************************************
-   //    * Write the gradient direction image out to a file.
-   //    *************************************************************************/
-   //    if((fpdir = fopen(fname, "wb")) == NULL){
-   //       fprintf(stderr, "Error opening the file %s for writing.\n", fname);
-   //       exit(1);
-   //    }
-   //    fwrite(dir_radians, sizeof(float), rows*cols, fpdir);
-   //    fclose(fpdir);
-   //    free(dir_radians);
-   // }
-
-   /****************************************************************************
    * Compute the magnitude of the gradient.
    ****************************************************************************/
    if(VERBOSE) printf("Computing the magnitude of the gradient.\n");
@@ -91,26 +59,25 @@ void canny(unsigned char *image, const int rows, const int cols, float sigma,
    non_max_supp(magnitude_device, delta_x_device, delta_y_device, rows, cols, &nms_device);
 
    // /*Testing host reallock to check workingshit*/
-   const size_t deltaSz = rows*cols*sizeof(short);
-   delta_x = (short *) malloc(deltaSz);
-   delta_y = (short *) malloc(deltaSz);
-   magnitude = (short *) malloc(deltaSz);
+   const size_t deltaSz = rows*cols*sizeof(short int);
+   magnitude = (short int*) malloc(deltaSz);
 
    const size_t nms_size = rows*cols * sizeof(unsigned char);
    nms = (unsigned char*) malloc(nms_size);
 
-
-   // gpuErrchk(cudaMemcpy(delta_x, delta_x_device, deltaSz, cudaMemcpyDeviceToHost));
-   // gpuErrchk(cudaMemcpy(delta_y, delta_y_device, deltaSz, cudaMemcpyDeviceToHost));
-   // gpuErrchk(cudaMemcpy(smoothedimHost, smoothedimDevice, smoothedimSz, cudaMemcpyDeviceToHost));
    gpuErrchk(cudaMemcpy(magnitude, magnitude_device, deltaSz, cudaMemcpyDeviceToHost));
    gpuErrchk(cudaMemcpy(nms, nms_device, nms_size, cudaMemcpyDeviceToHost));
+
+       /* ---- DEBUG ---- */
+    char fn[] = "nms_cuda.pgm";
+    write_pgm_image(fn, nms, rows, cols, "", 255);
+   /* ---- DEBUG ---- */
 
    /****************************************************************************
    * Use hysteresis to mark the edge pixels.
    ****************************************************************************/
    if(VERBOSE) printf("Doing hysteresis thresholding.\n");
-   if((*edge=(unsigned char *)calloc(rows*cols,sizeof(unsigned char))) ==NULL){
+   if((*edge=(unsigned char *)calloc(rows*cols, sizeof(unsigned char))) ==NULL){
       fprintf(stderr, "Error allocating the edge image.\n");
       exit(1);
    }
@@ -121,14 +88,11 @@ void canny(unsigned char *image, const int rows, const int cols, float sigma,
    * Free all of the memory that we allocated except for the edge image that
    * is still being used to store out result.
    ****************************************************************************/
-   // cudaFree(delta_x_device);
-   // cudaFree(delta_y_device);
+   cudaFree(delta_x_device);
+   cudaFree(delta_y_device);
    cudaFree(magnitude);
-   // cudaFree(smoothedimDevice);
+   cudaFree(smoothedimDevice);
    cudaFree(image_device);
-   // free(smoothedimHost);
-   // free(delta_x);
-   // free(delta_y);
    free(magnitude);
    free(nms);
 }
@@ -216,7 +180,7 @@ void magnitude_x_y( short int *delta_x,
                     int rows, int cols,
                     short int **magnitude)
 {
-    gpuErrchk(cudaMalloc((void**) magnitude, rows*cols*sizeof(short)));
+    gpuErrchk(cudaMalloc((void**) magnitude, rows*cols*sizeof(short int)));
 
     dim3 dgrid;
     dim3 dblock;

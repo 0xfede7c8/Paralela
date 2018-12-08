@@ -1,7 +1,7 @@
 #ifndef HYSTERESIS_H
 #define HYSTERESIS_H
 
-#define VERBOSE 1
+#define VERBOSE 0
 #define NOEDGE 255
 #define POSSIBLE_EDGE 128
 #define EDGE 0
