@@ -29,8 +29,8 @@ void follow_edges(unsigned char *edgemapptr, short *edgemagptr, short lowval,
    unsigned char *tempmapptr;
    int i;
    float thethresh;
-   int x[8] = {1,1,0,-1,-1,-1,0,1},
-       y[8] = {0,1,1,1,0,-1,-1,-1};
+   int x[8] = {1,1,0,-1,-1,-1, 0, 1},
+       y[8] = {0,1,1, 1, 0,-1,-1,-1};
 
    for(i=0;i<8;i++){
       tempmapptr = edgemapptr - y[i]*cols + x[i];

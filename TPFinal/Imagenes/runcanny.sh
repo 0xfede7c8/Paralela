@@ -22,7 +22,7 @@ then
 elif [ $1 = mpi ]
 then
     mpicc -ggdb3 -o ../CannyMPI/canny_edge ../CannyMPI/canny_edge.c ../CannyMPI/hysteresis.c ../CannyMPI/pgm_io.c -lm -O3
-    mpirun -np 4 ../CannyMPI/canny_edge sunrise8k.pgm 10 0.9 0.95
+    mpirun -np 6 ../CannyMPI/canny_edge sunrise8k.pgm 10 0.9 0.95
 elif [ $1 = cuda ]
 then
     nvcc -g -G -O3 -Wno-deprecated-gpu-targets -o ../CannyCUDA/canny_edgeCUDA ../CannyCUDA/canny_edge.cu ../CannyCUDA/canny.cu ../CannyCUDA/hysteresis.cu ../CannyCUDA/pgm_io.cu -lm
@@ -41,15 +41,15 @@ then
     #../CannyOpt/canny_edge sunrise8k.pgm 10 0.9 0.95
     #mv sunrise8k.pgm_s_10.00_l_0.90_h_0.95.pgm segundo.pgm
     
-    #echo "RUNNING OPENMP VERSION"
-    #gcc -ggdb3 -fopenmp -o ../CannyOpenMP/canny_edge ../CannyOpenMP/canny_edge.c ../CannyOpenMP/hysteresis.c ../CannyOpenMP/pgm_io.c -lm -O3
-    #../CannyOpenMP/canny_edge sunrise8k.pgm 10 0.9 0.95
-    #mv sunrise8k.pgm_s_10.00_l_0.90_h_0.95.pgm segundo.pgm
-
-    echo "RUNNING MPI VERSION"
-    mpicc -ggdb3 -o ../CannyMPI/canny_edge ../CannyMPI/canny_edge.c ../CannyMPI/hysteresis.c ../CannyMPI/pgm_io.c -lm -O3
-    mpirun -np 4 ../CannyMPI/canny_edge sunrise8k.pgm 10 0.9 0.95
+    echo "RUNNING OPENMP VERSION"
+    gcc -ggdb3 -fopenmp -o ../CannyOpenMP/canny_edge ../CannyOpenMP/canny_edge.c ../CannyOpenMP/hysteresis.c ../CannyOpenMP/pgm_io.c -lm -O3
+    ../CannyOpenMP/canny_edge sunrise8k.pgm 10 0.9 0.95
     mv sunrise8k.pgm_s_10.00_l_0.90_h_0.95.pgm segundo.pgm
+
+    #echo "RUNNING MPI VERSION"
+    #mpicc -ggdb3 -o ../CannyMPI/canny_edge ../CannyMPI/canny_edge.c ../CannyMPI/hysteresis.c ../CannyMPI/pgm_io.c -lm -O3
+    #mpirun -np 3 ../CannyMPI/canny_edge sunrise8k.pgm 10 0.9 0.95
+    #mv sunrise8k.pgm_s_10.00_l_0.90_h_0.95.pgm segundo.pgm
     
     #echo "RUNNING CUDA VERSION"
 	#nvcc -g -G -O3 -Wno-deprecated-gpu-targets -o ../CannyCUDA/canny_edgeCUDA ../CannyCUDA/canny_edge.cu ../CannyCUDA/canny.cu ../CannyCUDA/hysteresis.cu ../CannyCUDA/pgm_io.cu -lm

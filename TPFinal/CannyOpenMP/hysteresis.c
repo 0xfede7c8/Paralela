@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <omp.h>
+#include <string.h>
 
 #define VERBOSE 0
 
@@ -69,95 +70,16 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
     * follow_edges algorithm more efficient to not worry about tracking an
     * edge off the side of the image.
     ****************************************************************************/
+    memcpy(edge, nms, rows*cols);
     tini = omp_get_wtime();
-    
-    #pragma omp parallel private(r,c,pos)
-    {
-        #pragma omp sections
-        {
-            #pragma omp section
-            {
-                for(r=0,pos=0;r<rows;r++){
-                    for(c=0;c<cols;c++,pos++){
-                        if(nms[pos] == POSSIBLE_EDGE) edge[pos] = POSSIBLE_EDGE;
-                        else edge[pos] = NOEDGE;
-                    }
-                }
-            }
-
-            #pragma omp section
-            {
-                for(r=0;r<32768;r++) hist[r] = 0;
-                for(r=0,pos=0;r<rows;r++){
-                  for(c=0;c<cols;c++,pos++){
-                 if(edge[pos] == POSSIBLE_EDGE) hist[mag[pos]]++;
-                  }
-                }
-            }
-
-        }
-    }
-    /*
-    #pragma omp parallel for private(c, pos)
-    for(r=0;r<rows;r++){
-        for(c=0;c<cols;c++){
-            pos = r*cols+c;
-            if(nms[pos] == POSSIBLE_EDGE) edge[pos] = POSSIBLE_EDGE;
-            else edge[pos] = NOEDGE;
-      }
-    }
     for(r=0;r<32768;r++) hist[r] = 0;
-    tini = omp_get_wtime();
     for(r=0,pos=0;r<rows;r++){
       for(c=0;c<cols;c++,pos++){
      if(edge[pos] == POSSIBLE_EDGE) hist[mag[pos]]++;
       }
     }
-    */
-    //estos dos fors son para poner NOEDGE en los bordes, pero estan considerados
-    //en el for anterior puesto que nms en los bordes siempre tiene NOEDGE
-    /*
-    for(r=0,pos=0;r<rows;r++,pos+=cols){
-      edge[pos] = NOEDGE;
-      edge[pos+cols-1] = NOEDGE;
-    }
-    pos = (rows-1) * cols;
-    for(c=0;c<cols;c++,pos++){
-      edge[c] = NOEDGE;
-      edge[pos] = NOEDGE;
-    }
-    */
-
-    /****************************************************************************
-    * Compute the histogram of the magnitude image. Then use the histogram to
-    * compute hysteresis thresholds.
-    ****************************************************************************/
-    /*
-    for(r=0;r<32768;r++) hist[r] = 0;
-    tini = omp_get_wtime();
-    for(r=0,pos=0;r<rows;r++){
-      for(c=0;c<cols;c++,pos++){
-     if(edge[pos] == POSSIBLE_EDGE) hist[mag[pos]]++;
-      }
-    }
-    */
-    //version paralela
-    //la version paralela con el omp atomic tardaba mas que sin paralelizar
-    //porque lo se decidio hacer dos secciones de dos partes independientes
-    //(paralelismo funcional)
-    /*
-    for(r=0;r<rows;r++){
-        for(c=0;c<cols;c++){
-            pos = r*cols+c;
-            if(edge[pos] == POSSIBLE_EDGE){
-                #pragma omp atomic
-                hist[mag[pos]]++;
-            }
-        }
-    }
-    */
     tfin = omp_get_wtime();
-    printf("secciones (zero edges e histograma) --------------- %f\n", tfin-tini);
+    printf("histograma ---------------------------------- %f\n", tfin-tini);
 
     /****************************************************************************
     * Compute the number of pixels that passed the nonmaximal suppression.
@@ -208,16 +130,6 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
     * then calls follow_edges to continue the edge.
     ****************************************************************************/
     tini = omp_get_wtime();
-    /*
-    for(r=0,pos=0;r<rows;r++){
-        for(c=0;c<cols;c++,pos++){
-            if((edge[pos] == POSSIBLE_EDGE) && (mag[pos] >= highthreshold)){
-                edge[pos] = EDGE;
-                follow_edges((edge+pos), (mag+pos), lowthreshold, cols);
-             }
-        }
-    }
-    */
     #pragma omp parallel for private(c, pos)
     for(r=0;r<rows;r++){
         for(c=0;c<cols;c++){
@@ -256,11 +168,35 @@ void non_max_supp(short *mag, short *gradx, short *grady, int nrows, int ncols,
     short m00,gx,gy;
     float mag1,mag2,xperp,yperp;
     unsigned char *resultrowptr, *resultptr;
+    unsigned char *resultrowptr2, *resultptr2;
 
 
     /****************************************************************************
     * Zero the edges of the result image.
     ****************************************************************************/
+    for(count=0,
+        resultrowptr=result,
+        resultptr=result+ncols*(nrows-1),
+        resultptr2=result+ncols*(nrows-2);
+        count<ncols; 
+        resultptr++,resultrowptr++,resultptr2++,count++){
+        *resultrowptr = *resultptr = *resultptr2 = (unsigned char) 255;
+    }
+
+    for(count=0,
+        resultptr=result,
+        resultrowptr=result+ncols-1,
+        resultrowptr2=result+ncols-2;
+        count<nrows;
+
+        count++,
+        
+        resultptr+=ncols,
+        resultrowptr+=ncols,
+        resultrowptr2+=ncols){
+        *resultptr = *resultrowptr = *resultrowptr2 = (unsigned char) 255;
+    }
+    /*
     for(count=0,resultrowptr=result,resultptr=result+ncols*(nrows-1); 
         count<ncols; resultptr++,resultrowptr++,count++){
         *resultrowptr = *resultptr = (unsigned char) 0;
@@ -270,6 +206,7 @@ void non_max_supp(short *mag, short *gradx, short *grady, int nrows, int ncols,
         count<nrows; count++,resultptr+=ncols,resultrowptr+=ncols){
         *resultptr = *resultrowptr = (unsigned char) 0;
     }
+    */
 
     //----------------------------------------------------------------------------
     // Suppress non-maximum points.

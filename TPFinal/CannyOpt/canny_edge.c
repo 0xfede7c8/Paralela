@@ -245,6 +245,7 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
       fprintf(stderr, "Error allocating the edge image.\n");
       exit(1);
     }
+    
 
     gettimeofday(&start, NULL);
     apply_hysteresis(magnitude, nms, rows, cols, tlow, thigh, *edge);

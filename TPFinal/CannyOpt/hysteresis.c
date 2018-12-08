@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define VERBOSE 0
 
@@ -65,13 +66,17 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
    * follow_edges algorithm more efficient to not worry about tracking an
    * edge off the side of the image.
    ****************************************************************************/
+   /*
    for(r=0,pos=0;r<rows;r++){
       for(c=0;c<cols;c++,pos++){
 	 if(nms[pos] == POSSIBLE_EDGE) edge[pos] = POSSIBLE_EDGE;
 	 else edge[pos] = NOEDGE;
       }
    }
+   */
+   memcpy(edge, nms, rows*cols);
 
+   /*
    for(r=0,pos=0;r<rows;r++,pos+=cols){
       edge[pos] = NOEDGE;
       edge[pos+cols-1] = NOEDGE;
@@ -81,6 +86,7 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
       edge[c] = NOEDGE;
       edge[pos] = NOEDGE;
    }
+   */
 
    /****************************************************************************
    * Compute the histogram of the magnitude image. Then use the histogram to
@@ -167,19 +173,33 @@ void non_max_supp(short *mag, short *gradx, short *grady, int nrows, int ncols,
     short m00,gx,gy;
     float mag1,mag2,xperp,yperp;
     unsigned char *resultrowptr, *resultptr;
+    unsigned char *resultrowptr2, *resultptr2;
     
 
    /****************************************************************************
    * Zero the edges of the result image.
    ****************************************************************************/
-    for(count=0,resultrowptr=result,resultptr=result+ncols*(nrows-1); 
-        count<ncols; resultptr++,resultrowptr++,count++){
-        *resultrowptr = *resultptr = (unsigned char) 0;
+    for(count=0,
+        resultrowptr=result,
+        resultptr=result+ncols*(nrows-1),
+        resultptr2=result+ncols*(nrows-2);
+        count<ncols; 
+        resultptr++,resultrowptr++,resultptr2++,count++){
+        *resultrowptr = *resultptr = *resultptr2 = (unsigned char) 255;
     }
 
-    for(count=0,resultptr=result,resultrowptr=result+ncols-1;
-        count<nrows; count++,resultptr+=ncols,resultrowptr+=ncols){
-        *resultptr = *resultrowptr = (unsigned char) 0;
+    for(count=0,
+        resultptr=result,
+        resultrowptr=result+ncols-1,
+        resultrowptr2=result+ncols-2;
+        count<nrows;
+
+        count++,
+        
+        resultptr+=ncols,
+        resultrowptr+=ncols,
+        resultrowptr2+=ncols){
+        *resultptr = *resultrowptr = *resultrowptr2 = (unsigned char) 255;
     }
 
    //----------------------------------------------------------------------------
