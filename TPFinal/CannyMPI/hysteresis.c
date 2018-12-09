@@ -7,6 +7,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include "mpi.h"
 
 #define VERBOSE 0
 
@@ -52,104 +54,100 @@ void follow_edges(unsigned char *edgemapptr, short *edgemagptr, short lowval,
 * DATE: 2/15/96
 *******************************************************************************/
 void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
-	float tlow, float thigh, unsigned char *edge)
+	float tlow, float thigh, unsigned char *edge, int rank, int num_processes)
 {
-   int r, c, pos, numedges, lowcount, highcount, lowthreshold, highthreshold,
-       i, hist[32768], rr, cc;
-   short int maximum_mag, sumpix;
+    int r, c, pos, numedges, lowcount, highcount, lowthreshold, highthreshold,
+        i, hist[32768], rr, cc;
+    short int maximum_mag, sumpix;
 
-   /****************************************************************************
-   * Initialize the edge map to possible edges everywhere the non-maximal
-   * suppression suggested there could be an edge except for the border. At
-   * the border we say there can not be an edge because it makes the
-   * follow_edges algorithm more efficient to not worry about tracking an
-   * edge off the side of the image.
-   ****************************************************************************/
-   for(r=0,pos=0;r<rows;r++){
-      for(c=0;c<cols;c++,pos++){
-	 if(nms[pos] == POSSIBLE_EDGE) edge[pos] = POSSIBLE_EDGE;
-	 else edge[pos] = NOEDGE;
-      }
-   }
+    /****************************************************************************
+    * Initialize the edge map to possible edges everywhere the non-maximal
+    * suppression suggested there could be an edge except for the border. At
+    * the border we say there can not be an edge because it makes the
+    * follow_edges algorithm more efficient to not worry about tracking an
+    * edge off the side of the image.
+    ****************************************************************************/
+    unsigned char *tempedge = (unsigned char *) calloc(rows*cols, sizeof(unsigned char));
+    memcpy(tempedge, nms, rows*cols);
 
-   /*
-   for(r=0,pos=0;r<rows;r++,pos+=cols){
-      edge[pos] = NOEDGE;
-      edge[pos+cols-1] = NOEDGE;
-   }
-   pos = (rows-1) * cols;
-   for(c=0;c<cols;c++,pos++){
-      edge[c] = NOEDGE;
-      edge[pos] = NOEDGE;
-   }
-   */
+    /****************************************************************************
+    * Compute the histogram of the magnitude image. Then use the histogram to
+    * compute hysteresis thresholds.
+    ****************************************************************************/
 
-   /****************************************************************************
-   * Compute the histogram of the magnitude image. Then use the histogram to
-   * compute hysteresis thresholds.
-   ****************************************************************************/
-   for(r=0;r<32768;r++) hist[r] = 0;
-   for(r=0,pos=0;r<rows;r++){
-      for(c=0;c<cols;c++,pos++){
-	 if(edge[pos] == POSSIBLE_EDGE) hist[mag[pos]]++;
-      }
-   }
+    int temphist[32768];
+    for(r=0;r<32768;r++) temphist[r] = 0;
 
-   /****************************************************************************
-   * Compute the number of pixels that passed the nonmaximal suppression.
-   ****************************************************************************/
-   for(r=1,numedges=0;r<32768;r++){
-      if(hist[r] != 0) maximum_mag = r;
-      numedges += hist[r];
-   }
+    int limit;
+    if(rank == num_processes-1) limit = rows;
+    else limit = (rank+1)*(rows/num_processes);
+    for(r=rank*(rows/num_processes); r<limit;  r++){
+        for(c=0;c<cols;c++){
+            pos = r*cols+c;
+            if(tempedge[pos] == POSSIBLE_EDGE) temphist[mag[pos]]++;
+        }
+    }
 
-   highcount = (int)(numedges * thigh + 0.5);
+    MPI_Allreduce(temphist, hist, 32768, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    /****************************************************************************
+    * Compute the number of pixels that passed the nonmaximal suppression.
+    ****************************************************************************/
+    for(r=1,numedges=0;r<32768;r++){
+       if(hist[r] != 0) maximum_mag = r;
+       numedges += hist[r];
+    }
 
-   /****************************************************************************
-   * Compute the high threshold value as the (100 * thigh) percentage point
-   * in the magnitude of the gradient histogram of all the pixels that passes
-   * non-maximal suppression. Then calculate the low threshold as a fraction
-   * of the computed high threshold value. John Canny said in his paper
-   * "A Computational Approach to Edge Detection" that "The ratio of the
-   * high to low threshold in the implementation is in the range two or three
-   * to one." That means that in terms of this implementation, we should
-   * choose tlow ~= 0.5 or 0.33333.
-   ****************************************************************************/
-   r = 1;
-   numedges = hist[1];
-   while((r<(maximum_mag-1)) && (numedges < highcount)){
-      r++;
-      numedges += hist[r];
-   }
-   highthreshold = r;
-   lowthreshold = (int)(highthreshold * tlow + 0.5);
+    highcount = (int)(numedges * thigh + 0.5);
 
-   if(VERBOSE){
-      printf("The input low and high fractions of %f and %f computed to\n",
-	 tlow, thigh);
-      printf("magnitude of the gradient threshold values of: %d %d\n",
-	 lowthreshold, highthreshold);
-   }
+    /****************************************************************************
+    * Compute the high threshold value as the (100 * thigh) percentage point
+    * in the magnitude of the gradient histogram of all the pixels that passes
+    * non-maximal suppression. Then calculate the low threshold as a fraction
+    * of the computed high threshold value. John Canny said in his paper
+    * "A Computational Approach to Edge Detection" that "The ratio of the
+    * high to low threshold in the implementation is in the range two or three
+    * to one." That means that in terms of this implementation, we should
+    * choose tlow ~= 0.5 or 0.33333.
+    ****************************************************************************/
+    r = 1;
+    numedges = hist[1];
+    while((r<(maximum_mag-1)) && (numedges < highcount)){
+       r++;
+       numedges += hist[r];
+    }
+    highthreshold = r;
+    lowthreshold = (int)(highthreshold * tlow + 0.5);
 
-   /****************************************************************************
-   * This loop looks for pixels above the highthreshold to locate edges and
-   * then calls follow_edges to continue the edge.
-   ****************************************************************************/
-   for(r=0,pos=0;r<rows;r++){
-      for(c=0;c<cols;c++,pos++){
-	 if((edge[pos] == POSSIBLE_EDGE) && (mag[pos] >= highthreshold)){
-            edge[pos] = EDGE;
-            follow_edges((edge+pos), (mag+pos), lowthreshold, cols);
-	 }
-      }
-   }
+    if(VERBOSE){
+       printf("The input low and high fractions of %f and %f computed to\n",
+      tlow, thigh);
+       printf("magnitude of the gradient threshold values of: %d %d\n",
+      lowthreshold, highthreshold);
+    }
 
-   /****************************************************************************
-   * Set all the remaining possible edges to non-edges.
-   ****************************************************************************/
-   for(r=0,pos=0;r<rows;r++){
-      for(c=0;c<cols;c++,pos++) if(edge[pos] != EDGE) edge[pos] = NOEDGE;
-   }
+    /****************************************************************************
+    * This loop looks for pixels above the highthreshold to locate edges and
+    * then calls follow_edges to continue the edge.
+    ****************************************************************************/
+    for(r=rank*(rows/num_processes);r<limit;r++){
+        for(c=0;c<cols;c++){
+            pos = r*cols+c;
+            if((tempedge[pos] == POSSIBLE_EDGE) && (mag[pos] >= highthreshold)){
+                tempedge[pos] = EDGE;
+                follow_edges((tempedge+pos), (mag+pos), lowthreshold, cols);
+            }
+        }
+    }
+    /****************************************************************************
+    * Set all the remaining possible edges to non-edges.
+    ****************************************************************************/
+    //si lo paralelizo da distinto (por la reduccion)
+    for(r=0, pos=0; r<rows;r++){
+        for(c=0;c<cols;c++, pos++){
+            if(tempedge[pos] != EDGE) tempedge[pos] = NOEDGE;
+        }
+    }
+    MPI_Reduce(tempedge, edge, rows*cols, MPI_UNSIGNED_CHAR, MPI_MIN, 0, MPI_COMM_WORLD);
 }
 
 /*******************************************************************************
@@ -169,19 +167,33 @@ void non_max_supp(short *mag, short *gradx, short *grady, int nrows, int ncols,
     short m00,gx,gy;
     float mag1,mag2,xperp,yperp;
     unsigned char *resultrowptr, *resultptr;
+    unsigned char *resultrowptr2, *resultptr2;
     
 
    /****************************************************************************
    * Zero the edges of the result image.
    ****************************************************************************/
-    for(count=0,resultrowptr=result,resultptr=result+ncols*(nrows-1); 
-        count<ncols; resultptr++,resultrowptr++,count++){
-        *resultrowptr = *resultptr = (unsigned char) 0;
+    for(count=0,
+        resultrowptr=result,
+        resultptr=result+ncols*(nrows-1),
+        resultptr2=result+ncols*(nrows-2);
+        count<ncols; 
+        resultptr++,resultrowptr++,resultptr2++,count++){
+        *resultrowptr = *resultptr = *resultptr2 = (unsigned char) 255;
     }
 
-    for(count=0,resultptr=result,resultrowptr=result+ncols-1;
-        count<nrows; count++,resultptr+=ncols,resultrowptr+=ncols){
-        *resultptr = *resultrowptr = (unsigned char) 0;
+    for(count=0,
+        resultptr=result,
+        resultrowptr=result+ncols-1,
+        resultrowptr2=result+ncols-2;
+        count<nrows;
+
+        count++,
+        
+        resultptr+=ncols,
+        resultrowptr+=ncols,
+        resultrowptr2+=ncols){
+        *resultptr = *resultrowptr = *resultrowptr2 = (unsigned char) 255;
     }
 
    //----------------------------------------------------------------------------

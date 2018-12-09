@@ -16,6 +16,9 @@
 #define POSSIBLE_EDGE 128
 #define EDGE 0
 
+#ifndef NUM_THREADS
+#define NUM_THREADS 6
+#endif
 /*******************************************************************************
 * PROCEDURE: follow_edges
 * PURPOSE: This procedure edges is a recursive routine that traces edgs along
@@ -73,10 +76,13 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
     memcpy(edge, nms, rows*cols);
     tini = omp_get_wtime();
     for(r=0;r<32768;r++) hist[r] = 0;
-    for(r=0,pos=0;r<rows;r++){
-      for(c=0;c<cols;c++,pos++){
-     if(edge[pos] == POSSIBLE_EDGE) hist[mag[pos]]++;
-      }
+
+    #pragma omp parallel for private(c, pos) reduction(+:hist)
+    for(r=0;r<rows;r++){
+        for(c=0;c<cols;c++){
+            pos = r*cols+c;
+            if(edge[pos] == POSSIBLE_EDGE) hist[mag[pos]]++;
+        }
     }
     tfin = omp_get_wtime();
     printf("histograma ---------------------------------- %f\n", tfin-tini);
@@ -130,16 +136,22 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
     * then calls follow_edges to continue the edge.
     ****************************************************************************/
     tini = omp_get_wtime();
-    #pragma omp parallel for private(c, pos)
-    for(r=0;r<rows;r++){
-        for(c=0;c<cols;c++){
-            pos = r*cols+c;
-            if((edge[pos] == POSSIBLE_EDGE) && (mag[pos] >= highthreshold)){
-                edge[pos] = EDGE;
-                follow_edges((edge+pos), (mag+pos), lowthreshold, cols);
-             }
+    int limit;
+    #pragma omp parallel for private(r, c, pos, limit)
+    for(i=0; i<NUM_THREADS; i++){
+        if(i == NUM_THREADS-1) limit = rows;
+        else limit = (i+1)*(rows/NUM_THREADS);
+        for(r=i*(rows/NUM_THREADS); r<limit; r++){
+            for(c=0;c<cols;c++){
+                pos = r*cols+c;
+                if((edge[pos] == POSSIBLE_EDGE) && (mag[pos] >= highthreshold)){
+                    edge[pos] = EDGE;
+                    follow_edges((edge+pos), (mag+pos), lowthreshold, cols);
+                 }
+            }
         }
     }
+
     tfin = omp_get_wtime();
     printf("follow_edges ----------------------------- %f\n", tfin-tini);
 
@@ -196,28 +208,10 @@ void non_max_supp(short *mag, short *gradx, short *grady, int nrows, int ncols,
         resultrowptr2+=ncols){
         *resultptr = *resultrowptr = *resultrowptr2 = (unsigned char) 255;
     }
-    /*
-    for(count=0,resultrowptr=result,resultptr=result+ncols*(nrows-1); 
-        count<ncols; resultptr++,resultrowptr++,count++){
-        *resultrowptr = *resultptr = (unsigned char) 0;
-    }
-
-    for(count=0,resultptr=result,resultrowptr=result+ncols-1;
-        count<nrows; count++,resultptr+=ncols,resultrowptr+=ncols){
-        *resultptr = *resultrowptr = (unsigned char) 0;
-    }
-    */
 
     //----------------------------------------------------------------------------
     // Suppress non-maximum points.
     //----------------------------------------------------------------------------
-    /*
-    for(rowcount=1,magrowptr=mag+ncols+1,gxrowptr=gradx+ncols+1,
-      gyrowptr=grady+ncols+1,resultrowptr=result+ncols+1;
-      rowcount<nrows-2; 
-      rowcount++,magrowptr+=ncols,gyrowptr+=ncols,gxrowptr+=ncols,
-      resultrowptr+=ncols){   
-    */
     int ncols_increment;
     #pragma omp parallel for private (magrowptr, gxrowptr, gyrowptr,\
                                       resultrowptr, colcount, magptr, gxptr,\

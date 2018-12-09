@@ -63,7 +63,7 @@ void derrivative_x_y(short int *smoothedim, int rows, int cols,
 void magnitude_x_y(short int *delta_x, short int *delta_y, int rows, int cols,
         short int **magnitude);
 void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
-        float tlow, float thigh, unsigned char *edge);
+        float tlow, float thigh, unsigned char *edge, int rank, int num_processes);
 void radian_direction(short int *delta_x, short int *delta_y, int rows,
     int cols, float **dir_radians, int xdirtag, int ydirtag);
 double angle_radians(double x, double y);
@@ -307,22 +307,19 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
     }
     */
 
-    short int * magnitude2;
-    if(rank==0) magnitude2 = (short int *) calloc(rows*cols,sizeof(short int));
+    short int * magnitude2 = (short int *) calloc(rows*cols,sizeof(short int));
 
     if(rank!=0) magnitude = &magnitude[row_overlap*cols];
-    MPI_Gatherv(magnitude, recvcounts[rank], MPI_SHORT,
-                magnitude2, recvcounts, displs, MPI_SHORT, 0, MPI_COMM_WORLD);
+    MPI_Allgatherv(magnitude, recvcounts[rank], MPI_SHORT,
+                magnitude2, recvcounts, displs, MPI_SHORT, MPI_COMM_WORLD);
     
-    unsigned char * nms2;
-    if(rank==0) nms2 = (unsigned char *) calloc(rows*cols,sizeof(unsigned char));
+    unsigned char * nms2 = (unsigned char *) calloc(rows*cols,sizeof(unsigned char));
     if(rank!=0) nms = &nms[row_overlap*cols];
-    MPI_Gatherv(nms, recvcounts[rank], MPI_UNSIGNED_CHAR,
-                nms2, recvcounts, displs, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
+    MPI_Allgatherv(nms, recvcounts[rank], MPI_UNSIGNED_CHAR,
+                nms2, recvcounts, displs, MPI_UNSIGNED_CHAR, MPI_COMM_WORLD);
     //////////////////////////////////////////////////////////////////////////
     
 
-    if(rank==0){
     //---------------------------------------------------------------------------
     // Use hysteresis to mark the edge pixels.
     //---------------------------------------------------------------------------
@@ -333,7 +330,7 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
     }
 
     if(rank==0) gettimeofday(&start, NULL);
-    apply_hysteresis(magnitude2, nms2, rows, cols, tlow, thigh, *edge);
+    apply_hysteresis(magnitude2, nms2, rows, cols, tlow, thigh, *edge, rank, num_processes);
     if(rank==0) gettimeofday(&stop, NULL);
     if(rank==0) printTime(&start, &stop, "apply_hysteresis took: : ");
 
@@ -341,11 +338,12 @@ void canny(unsigned char *image, int rows, int cols, float sigma,
     // Free all of the memory that we allocated except for the edge image that
     // is still being used to store out result.
     //---------------------------------------------------------------------------
-    free(smoothedim);
-    free(delta_x);
-    free(delta_y);
-    free(magnitude);
-    free(nms);
+    if(rank==0){
+        free(smoothedim);
+        free(delta_x);
+        free(delta_y);
+        free(magnitude);
+        free(nms);
     }
 
 }
