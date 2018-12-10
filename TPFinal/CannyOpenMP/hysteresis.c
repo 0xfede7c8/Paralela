@@ -17,7 +17,7 @@
 #define EDGE 0
 
 #ifndef NUM_THREADS
-#define NUM_THREADS 6
+#define NUM_THREADS 4
 #endif
 /*******************************************************************************
 * PROCEDURE: follow_edges
@@ -137,18 +137,14 @@ void apply_hysteresis(short int *mag, unsigned char *nms, int rows, int cols,
     ****************************************************************************/
     tini = omp_get_wtime();
     int limit;
-    #pragma omp parallel for private(r, c, pos, limit)
-    for(i=0; i<NUM_THREADS; i++){
-        if(i == NUM_THREADS-1) limit = rows;
-        else limit = (i+1)*(rows/NUM_THREADS);
-        for(r=i*(rows/NUM_THREADS); r<limit; r++){
-            for(c=0;c<cols;c++){
-                pos = r*cols+c;
-                if((edge[pos] == POSSIBLE_EDGE) && (mag[pos] >= highthreshold)){
-                    edge[pos] = EDGE;
-                    follow_edges((edge+pos), (mag+pos), lowthreshold, cols);
-                 }
-            }
+    #pragma omp parallel for private(r, c, pos, limit) schedule(static, rows/NUM_THREADS)
+    for(r=0; r<rows; r++){
+        for(c=0;c<cols;c++){
+            pos = r*cols+c;
+            if((edge[pos] == POSSIBLE_EDGE) && (mag[pos] >= highthreshold)){
+                edge[pos] = EDGE;
+                follow_edges((edge+pos), (mag+pos), lowthreshold, cols);
+             }
         }
     }
 
@@ -216,7 +212,8 @@ void non_max_supp(short *mag, short *gradx, short *grady, int nrows, int ncols,
     #pragma omp parallel for private (magrowptr, gxrowptr, gyrowptr,\
                                       resultrowptr, colcount, magptr, gxptr,\
                                       gyptr, resultptr, m00, xperp, yperp,\
-                                      gx, gy, z1, z2)
+                                      gx, gy, z1, z2) \
+                             schedule(static, nrows/NUM_THREADS)
     for(rowcount=1; rowcount<nrows-2; rowcount++){   
 
       ncols_increment = rowcount*ncols;

@@ -39,3 +39,7 @@ canny_edgeCUDA
 *.jpeg
 *.png
 *.bmp
+
+#vim temp files
+*.swp
+*.swo

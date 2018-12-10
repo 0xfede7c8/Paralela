@@ -45,7 +45,7 @@ Mike Heath
 #define VERBOSE 0
 #define BOOSTBLURFACTOR 90.0
 
-#define NUM_THREADS 6
+#define NUM_THREADS 4
 
 int read_pgm_image(char *infilename, unsigned char **image, int *rows,
     int *cols);
@@ -370,7 +370,7 @@ void magnitude_x_y(short int *delta_x, short int *delta_y, int rows, int cols,
     */
     //se incluye el calculo de pos en cada thread para eliminar la depencia 
     //entre threads
-    #pragma omp parallel for private (c, pos, sq1, sq2)
+    #pragma omp parallel for private (c, pos, sq1, sq2) schedule(static, rows/NUM_THREADS)
     for(r=0;r<rows;r++){
       for(c=0;c<cols;c++){
          pos = (r*cols) + c;
@@ -416,7 +416,7 @@ void derrivative_x_y(short int *smoothedim, int rows, int cols,
     * losing pixels.
     ****************************************************************************/
     if(VERBOSE) printf("   Computing the X-direction derivative.\n");
-    #pragma omp parallel for private (r, pos)
+    #pragma omp parallel for private (r, pos) schedule(static, rows/NUM_THREADS)
     for(r=0;r<rows;r++){
       pos = r * cols;
       (*delta_x)[pos] = smoothedim[pos+1] - smoothedim[pos];
@@ -449,7 +449,7 @@ void derrivative_x_y(short int *smoothedim, int rows, int cols,
     */
     //se modifica el codigo para aprovechar localidad espacial
     //ahorra 60ms
-    #pragma omp parallel for private(c, pos)
+    #pragma omp parallel for private(c, pos) schedule(static, rows/NUM_THREADS)
     for(r=0;r<rows;r++){
         pos = r * cols;
         if(r==0){
@@ -517,7 +517,7 @@ void gaussian_smooth(unsigned char *image, int rows, int cols, float sigma,
     * Blur in the x - direction.
     ****************************************************************************/
     if(VERBOSE) printf("   Bluring the image in the X-direction.\n");
-    #pragma omp parallel for private (c,cc,dot,sum)
+    #pragma omp parallel for private (c,cc,dot,sum) schedule(static, rows/NUM_THREADS)
     for(r=0;r<rows;r++){
       for(c=0;c<cols;c++){
          dot = 0.0;
@@ -541,9 +541,7 @@ void gaussian_smooth(unsigned char *image, int rows, int cols, float sigma,
     ****************************************************************************/
     //se cambian de orden los dos fors para cada que cada trhead se encarge de una
     //fila y no de una columna para aprovechar localidad espacial (ahorra 60ms)
-    #pragma omp parallel for private (c,rr,dot,sum)
-    //for(c=0;c<cols;c++){
-    //  for(r=0;r<rows;r++){
+    #pragma omp parallel for private (c,rr,dot,sum) schedule(static, rows/NUM_THREADS)
     for(r=0;r<rows;r++){
         for(c=0;c<cols;c++){
             sum = 0.0;
